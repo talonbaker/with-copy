@@ -1,15 +1,17 @@
 # System & Product Requirement Document: w/copy
 
-**Document version:** 1.1 (1.0 as supplied by the product owner on 2026-09-08;
+**Document version:** 1.2 (1.0 as supplied by the product owner on 2026-09-08;
 amended the same day, see the changelog at the end)
-**Status:** Authoritative requirements for MVP, pending resolution of the open
-questions tracked in `docs/planning/2026-09-08-path-to-mvp.md`.
+**Status:** Requirements for MVP. Read together with
+`docs/planning/decisions.md`, which resolves every conflict and records every
+decision that narrows or extends this document.
 
 > Note on provenance. The 2026-09-07 handoff in `docs/handoff/` reviewed a
 > longer "PRD v2 draft" containing sections (a `setups` array, multi-variant
 > selection, config linting, a global-hotkey note) that this document does not
-> contain. Whether that draft is superseded by this one is an open question.
-> Until answered, this document is treated as authoritative.
+> contain. Per decision D9, requirements are the union of this document and
+> that draft as captured in the handoff, and the decision log wins on conflict.
+> The decisions D12, D13 and D16 have since settled each of those v2 items.
 
 ---
 
@@ -73,6 +75,15 @@ questions tracked in `docs/planning/2026-09-08-path-to-mvp.md`.
     active clipboard content resides.
   - Touch-friendly interactions: long-press/drag to reorder pieces, swipe/tap
     to toggle active variants within a stack piece.
+- **Piece & Variant Management (in-app):**
+  - Pieces and their variants are created, edited, renamed, and deleted
+    inside the app through direct UI. The JSON file in §5 is for export,
+    import, and backup only; the user is never expected to hand-author it.
+  - Tapping a piece reveals all of its variants so the user can see what is
+    available and choose one, rather than cycling blind. Variants can be
+    added, edited, enabled, and disabled from that same view.
+  - Controls must look and feel polished and smooth. Polish is never bought
+    at the cost of the performance requirement in §2.
 - **Action & Notification Feedback:**
   - Executing the copy action updates the system clipboard and immediately
     displays a lightweight toast notification reading: "Wrapped with copy".
@@ -106,6 +117,20 @@ questions tracked in `docs/planning/2026-09-08-path-to-mvp.md`.
 ---
 
 ## Changelog
+
+### 1.2 (2026-09-08)
+
+- **§4.** Added "Piece & Variant Management (in-app)" per decisions D15, D17
+  and D18. The 1.0 text covered reordering and variant toggling but said
+  nothing about how pieces are authored; the product owner has confirmed they
+  are authored in the app, never by hand-editing JSON.
+- **Header.** Provenance note updated to reflect D9: the v2 draft is not
+  superseded, the two documents are read as a union, and the decision log
+  resolves conflicts.
+- **§5 schema is now known to be incomplete.** The `variants` map of id to
+  string cannot carry the per-variant enabled flag that D17 requires. The
+  schema will be redefined in the design spec; this document's §5 is left as
+  the 1.0 sketch until then.
 
 ### 1.1 (2026-09-08)
 
