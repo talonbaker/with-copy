@@ -450,6 +450,7 @@ window).
 | Not focused | error | Tap w/copy again. |
 | Write failed | error | Couldn't write to the clipboard. Try again. |
 | Piece deleted | info | Piece deleted. (Undo) |
+| Variant deleted | info | Variant deleted. (Undo) |
 | Stack deleted | info | Stack deleted. (Undo) |
 | Imported | success | Imported "Name". (Undo) |
 | Saved data unreadable | error | Saved data couldn't be read. Started fresh. |
