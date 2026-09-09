@@ -23,6 +23,9 @@ product owner can use the app for its real purpose.
 - Edits to `src/app/index.html` (remove the sample content; adjust templates only if you must, and say so)
 - Edits to `src/css/app.css` (additions under a clearly commented section; do not restyle what exists)
 
+Also add every new file you create under `src/` to `PRECACHE_URLS` in
+`src/sw.js`; a missing URL fails the whole service worker install.
+
 Leave `side-panel.js` and `settings.js` for the next task. The panel and
 settings buttons may open their dialogs empty for now.
 

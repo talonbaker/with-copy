@@ -18,28 +18,22 @@ const CACHE_NAME = `wcopy-${VERSION}`;
 // needs to work offline) and sw.js itself (the browser manages the service
 // worker script's own update checks outside Cache Storage; precaching it
 // here would add nothing and risks confusing that mechanism).
+//
+// Keep this list exact: cache.addAll rejects, and the install fails, if any
+// URL 404s. Every task that adds a file under src/ appends it here.
 const PRECACHE_URLS = [
   '/',
   '/app/',
   '/manifest.webmanifest',
   '/css/tokens.css',
   '/css/app.css',
-  '/js/main.js',
   '/js/store.js',
   '/js/schema.js',
   '/js/merge.js',
   '/js/clipboard.js',
   '/js/link.js',
-  '/js/qr.js',
   '/js/ui/toast.js',
   '/js/ui/undo.js',
-  '/js/ui/stack-view.js',
-  '/js/ui/piece-card.js',
-  '/js/ui/variants.js',
-  '/js/ui/drag.js',
-  '/js/ui/expand.js',
-  '/js/ui/side-panel.js',
-  '/js/ui/settings.js',
   '/icons/icon.svg',
   '/icons/icon-192.png',
   '/icons/icon-512.png',

@@ -170,14 +170,3 @@ textarea {
 }
 
 /* Shared with src/index.html, the tiny root forwarder to /app/. */
-.wc-redirect {
-  min-height: 80vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-}
-
-.wc-redirect a {
-  color: var(--probe-accent);
-}

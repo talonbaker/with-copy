@@ -18,6 +18,7 @@ single most visible piece of craft in the app. Make it feel excellent.
 - `src/js/ui/drag.js`
 - Edits to `src/js/ui/stack-view.js` (call `enableReorder` after render; commit the reorder)
 - Edits to `src/css/app.css` (a commented "drag" section)
+- `src/sw.js`: append `/js/ui/drag.js` to `PRECACHE_URLS`
 
 ## What to build
 

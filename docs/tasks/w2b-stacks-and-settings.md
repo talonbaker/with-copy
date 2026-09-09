@@ -20,6 +20,7 @@ disabled with a tooltip "Coming next".
 
 - `src/js/ui/side-panel.js`, `src/js/ui/settings.js`
 - Edits to `src/js/main.js` (wiring only), `src/app/index.html` (panel and settings templates), `src/css/app.css` (additions under a commented section)
+- `src/sw.js`: append every new file you create to `PRECACHE_URLS`
 
 ## What to build
 

@@ -17,6 +17,7 @@ code on desktop for the phone to scan. Opening the link imports the stack.
 
 - `src/js/qr.js`
 - Edits to `src/js/ui/settings.js` (enable the two share buttons), `src/js/main.js` (fragment import on load), `src/css/app.css` (commented "share" section)
+- `src/sw.js`: append `/js/qr.js` to `PRECACHE_URLS`
 
 ## What to build
 
