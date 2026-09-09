@@ -48,6 +48,7 @@ the old one.
 | D40 | 2026-09-09 | **Work is delegated to Sonnet agents only**, orchestrated from this session. No Opus agents. | Product owner |
 | D41 | 2026-09-09 | **A modern, minimal landing page is planned after MVP**: what the app is, where to find more, FAQ, legal. Supersedes D38. To make room without breaking installed PWAs or share links later, the app lives at `/app/` from the start and the root serves a minimal forwarding page until the landing page exists. | Product owner (landing page); orchestrating agent (path choice) |
 | D42 | 2026-09-09 | **Public repository hygiene.** The repo is public and a portfolio piece. Nothing under `.claude/`, no credentials, no personal data, no session artifacts are ever committed. | Product owner |
+| D43 | 2026-09-09 | **No GitHub Actions.** Amends D32 and D36. The deploy workflow is removed. Pages publishes branch `main`, folder `/`, so the site files live at the repository root with a `.nojekyll` marker. The service worker version is bumped by hand in every release commit. | Product owner ("it's costing me money") |
 
 ## Open
 

@@ -34,44 +34,48 @@ changing it here first.
 ## 2. Repository layout
 
 ```
-/
-├── CLAUDE.md                     project rules for agents
-├── README.md
-├── src/                          everything under here is deployed as-is
-│   ├── index.html                root: minimal forwarding page to /app/ until the landing page exists (D41)
-│   ├── app/
-│   │   └── index.html            the app (single screen), served at /app/
-│   ├── probe.html                temporary clipboard probe page (see §9)
-│   ├── manifest.webmanifest
-│   ├── sw.js                     service worker
-│   ├── CNAME                     withcopy.app
-│   ├── icons/                    icon.svg, icon-192.png, icon-512.png, apple-touch-icon.png, maskable-512.png
-│   ├── css/
-│   │   ├── tokens.css            design tokens: color, space, type, radius, motion; light/dark; density
-│   │   └── app.css               layout and components
-│   └── js/
-│       ├── main.js               bootstrap: load state, render, wire events
-│       ├── store.js              state container + persistence
-│       ├── schema.js             ids, defaults, validation, migration
-│       ├── merge.js              pure assembly of the output text
-│       ├── clipboard.js          read/write adapter with WebKit strategy
-│       ├── link.js               stack <-> URL fragment codec
-│       ├── qr.js                 QR encoder (last task, optional)
-│       └── ui/
-│           ├── toast.js
-│           ├── undo.js
-│           ├── stack-view.js     renders the list of piece cards
-│           ├── piece-card.js     one card: label, text, variants, controls
-│           ├── variants.js       variant list behaviour
-│           ├── drag.js           pointer-based reorder with a handle
-│           ├── expand.js         fill-screen editor dialog
-│           ├── side-panel.js     stack list
-│           └── settings.js       settings dialog, export/import, share link
+/                                 the repository root IS the published site (GitHub Pages, branch main, folder /)
+├── .nojekyll                     tells Pages to publish files untouched
+├── CNAME                         withcopy.app
+├── index.html                    root: minimal forwarding page to /app/ until the landing page exists (D41)
+├── app/
+│   └── index.html                the app (single screen), served at /app/
+├── probe.html                    temporary clipboard probe page (see §9)
+├── manifest.webmanifest
+├── sw.js                         service worker
+├── icons/                        icon.svg, icon-192.png, icon-512.png, apple-touch-icon.png, maskable-512.png
+├── css/
+│   ├── tokens.css                design tokens: color, space, type, radius, motion; light/dark; density
+│   └── app.css                   layout and components
+├── js/
+│   ├── main.js                   bootstrap: load state, render, wire events
+│   ├── store.js                  state container + persistence
+│   ├── schema.js                 ids, defaults, validation, migration
+│   ├── merge.js                  pure assembly of the output text
+│   ├── clipboard.js              read/write adapter with WebKit strategy
+│   ├── link.js                   stack <-> URL fragment codec
+│   ├── qr.js                     QR encoder
+│   └── ui/
+│       ├── toast.js
+│       ├── undo.js
+│       ├── stack-view.js         renders the list of piece cards
+│       ├── piece-card.js         one card: label, text, variants, controls
+│       ├── variants.js           variant list behaviour
+│       ├── drag.js               pointer-based reorder with a handle
+│       ├── expand.js             fill-screen editor dialog
+│       ├── side-panel.js         stack list
+│       └── settings.js           settings dialog, export/import, share link
 ├── tests/                        node:test files, run with `npm test` (no deps)
 ├── package.json                  scripts only, no dependencies
-├── .github/workflows/pages.yml   deploy src/ to GitHub Pages
-└── docs/
+├── CLAUDE.md                     project rules for agents
+├── README.md
+└── docs/                         planning and specs; published as plain files, harmless
 ```
+
+Non-site files (`docs/`, `tests/`, `package.json`, `CLAUDE.md`, `README.md`)
+are published too, since branch deployment serves the whole root. They are
+public anyway and contain nothing sensitive (D42). The service worker never
+precaches them.
 
 `package.json` exists only for `"scripts": { "test": "node --test tests/**/*.test.js" }`
 and `"type": "module"`. It has no `dependencies` and no `devDependencies`.
@@ -501,12 +505,13 @@ they can be pasted into chat. The probe is removed before launch.
 - `<link rel="apple-touch-icon">` 180px PNG, `apple-mobile-web-app-capable`,
   `apple-mobile-web-app-status-bar-style` default.
 - `sw.js`: registered from `/sw.js` with scope `/`. Precache list of every
-  file under `src/` except `probe.*`, including `/app/` and `/`.
+  site file except `probe.*`, including `/app/` and `/`.
   Cache name includes `VERSION`. Install caches all; activate deletes other
   caches and claims clients; fetch is cache-first for precached URLs and
-  network-only otherwise. `VERSION` is the literal `'dev'` in source and the
-  deploy workflow replaces it with the commit SHA before upload. That is a
-  string substitution, not a build.
+  network-only otherwise. `VERSION` is a hand-maintained string in `sw.js`
+  of the form `YYYY-MM-DD.N`. **Every push to `main` that changes any site
+  file must bump it**, or installed clients keep serving the old cache. The
+  bump is part of the release commit, not a separate one.
 - `main.js` registers the service worker after first render, listens for an
   updated worker, and toasts "Update ready" with a Reload action.
 
@@ -514,13 +519,12 @@ they can be pasted into chat. The probe is removed before launch.
 
 ## 11. Deploy
 
-`.github/workflows/pages.yml`: on push to `main` and on manual dispatch. Steps:
-checkout, run `npm test` (no install step; there are no dependencies), stamp
-`VERSION` in `src/sw.js` with the SHA using `sed`, upload `src/` as the Pages
-artifact, deploy. Permissions `pages: write`, `contents: read`,
-`id-token: write`. The product owner enables Pages with source "GitHub
-Actions" and sets the custom domain; DNS steps are in
-`docs/setup/github-pages-dns.md`.
+GitHub Pages, source "Deploy from a branch", branch `main`, folder `/`. No
+GitHub Actions workflow of ours exists (D43). GitHub's built-in Pages
+publisher runs on each push to `main` and serves the repository root as-is
+because of `.nojekyll`. Release procedure: run `npm test`, bump `VERSION` in
+`sw.js`, commit, push the feature branch, fast-forward `main`. Custom domain
+and DNS steps are in `docs/setup/github-pages-dns.md`.
 
 ---
 

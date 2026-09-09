@@ -16,8 +16,12 @@ no dependencies, no build step, no backend.
 
 - Zero runtime dependencies. `package.json` has scripts only. Never add a
   package. Never add a bundler, transpiler, or preprocessor.
-- Everything under `src/` is served as-is. Native ES modules, no JSX, no
-  TypeScript, no Sass.
+- The repository root is the published site (GitHub Pages, branch `main`,
+  folder `/`). Files are served as-is. Native ES modules, no JSX, no
+  TypeScript, no Sass. No GitHub Actions workflows, ever (D43).
+- Every commit that changes a site file and is headed for `main` bumps
+  `VERSION` in `sw.js` (`YYYY-MM-DD.N`) and adds any new file to
+  `PRECACHE_URLS` there. Installed clients otherwise keep the old cache.
 - No inline `<script>`, no inline event handlers, no `eval`, no `innerHTML`
   with user text. The page ships a strict Content-Security-Policy meta tag.
 - No external requests at runtime. No web fonts, no CDNs, no analytics.
@@ -39,5 +43,5 @@ no dependencies, no build step, no backend.
 
 ```
 npm test          # node --test tests/**/*.test.js
-python3 -m http.server -d src 8000   # serve locally at http://localhost:8000
+python3 -m http.server 8000   # serve locally; open http://localhost:8000/app/
 ```
