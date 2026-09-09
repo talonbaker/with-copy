@@ -11,9 +11,22 @@ happened, so the error toast is the only signal, and it reads as a failure
 when it is really "this platform needs a paste".
 
 The ceiling on iPhone is set by WebKit, not by us: the web cannot read the
-clipboard without one explicit paste gesture, ever. The goal is therefore
-**two taps, no error, no keyboard** on the common path, and never a dead
-end on any path.
+clipboard without one explicit paste gesture, ever. The product owner's
+direction (2026-09-09): the fewest possible taps, ideally none beyond the
+button; if the platform demands a paste gesture, **the w/copy button itself
+should be that gesture**, and no prompt, sheet, or error should appear
+because of it. The success toast stays; it is confirmation, not a prompt.
+Never a dead end on any path.
+
+Concretely, on a device that has refused a clipboard read, the action
+button becomes the paste target: pressing it puts the user directly in a
+state where the next native "Paste" action completes the wrap, with the
+button's own label telling them so ("Paste to w/copy"). Explore whether a
+contenteditable action button can receive the paste from the native
+long-press callout in one gesture, and whether the same-origin exemption
+(WebKit skips the callout when the clipboard was last written by this
+page) can be exploited for repeat presses. Report what only an iPhone can
+confirm; the probe page is being extended in parallel to measure it.
 
 ## Read first
 
