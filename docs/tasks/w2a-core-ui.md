@@ -20,7 +20,7 @@ product owner can use the app for its real purpose.
 
 - `src/js/main.js`
 - `src/js/ui/stack-view.js`, `src/js/ui/piece-card.js`, `src/js/ui/variants.js`, `src/js/ui/expand.js`
-- Edits to `src/index.html` (remove the sample content; adjust templates only if you must, and say so)
+- Edits to `src/app/index.html` (remove the sample content; adjust templates only if you must, and say so)
 - Edits to `src/css/app.css` (additions under a clearly commented section; do not restyle what exists)
 
 Leave `side-panel.js` and `settings.js` for the next task. The panel and

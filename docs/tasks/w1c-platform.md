@@ -16,6 +16,7 @@ worker and manifest, icons, and the GitHub Pages workflow.
 ## Files you own
 
 - `src/js/clipboard.js`
+- `src/index.html` (the root forwarding page described in spec §2 "Paths": same CSP, meta refresh to `/app/`, visible link)
 - `src/probe.html`, `src/js/probe.js`, `src/css/probe.css`
 - `src/sw.js`
 - `src/manifest.webmanifest`
@@ -42,7 +43,9 @@ writes the whole report as text. The page must also work when opened as an
 installed PWA. Include its own `<meta>` CSP identical to the app's.
 
 **Service worker**: spec §10. Precache list written out explicitly (no
-globbing at runtime). `VERSION` literal `'dev'`. Skip the probe files.
+globbing at runtime), including `/`, `/app/`, and every asset with
+root-absolute paths. `VERSION` literal `'dev'`. Skip the probe files.
+Manifest `start_url` is `/app/`, `scope` and `id` per spec §10.
 Cache-first for precached URLs, network-only for everything else. On
 activate, delete every other cache and `clients.claim()`. Post a message to
 clients when a new version has activated so the app can toast.
@@ -59,8 +62,9 @@ Steps: checkout; `node --version`; `npm test`; `sed` the SHA into `src/sw.js`;
 `actions/configure-pages`; `actions/upload-pages-artifact` with `path: src`;
 `actions/deploy-pages`. Concurrency group `pages`, cancel-in-progress false.
 
-**`.gitignore`**: `node_modules/`, `.DS_Store`, `*.log`, and any Playwright
-output directory you use. **`.editorconfig`**: 2-space, LF, utf-8, final
+**`.gitignore`**: `.claude/`, `node_modules/`, `.DS_Store`, `*.log`, and any
+Playwright output directory you use. The `.claude/` entry is mandatory: the
+repository is public and agent working directories must never be committed. **`.editorconfig`**: 2-space, LF, utf-8, final
 newline.
 
 ## Acceptance

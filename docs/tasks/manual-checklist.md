@@ -1,7 +1,7 @@
 # Manual checklist
 
 Walk the rows relevant to your brief in Chrome before you report. Serve with
-`python3 -m http.server -d src 8000` and open `http://localhost:8000`. For the
+`python3 -m http.server -d src 8000` and open `http://localhost:8000/app/`. For the
 narrow layout use DevTools device emulation at 390×844 (iPhone). Agents can
 use Playwright's bundled Chromium (`/opt/pw-browsers/chromium`) for
 screenshots; that is a dev-side tool, not a dependency, and nothing from it

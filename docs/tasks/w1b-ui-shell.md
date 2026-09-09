@@ -15,7 +15,7 @@ design pass for a portfolio piece.
 
 ## Files you own
 
-- `src/index.html`
+- `src/app/index.html` (the app page, served at `/app/`; see spec §2 "Paths": every asset reference is root-absolute)
 - `src/css/tokens.css`
 - `src/css/app.css`
 - `src/js/ui/toast.js`
@@ -27,7 +27,7 @@ producing them in parallel; they will exist at merge time.
 
 ## What to build
 
-**`index.html`**: the DOM skeleton in spec §7.1, the CSP meta from §12, the
+**`app/index.html`**: the DOM skeleton in spec §7.1, the CSP meta from §12, the
 manifest and icon links from §10, and `<template>` elements the integration
 agent will clone:
 
@@ -42,7 +42,7 @@ agent will clone:
   clipboard, footer) inside the `<ol class="wc-stack">` using the template
   markup, plus a sample variants list open on one of them. Mark that block
   with `<!-- sample content: remove in W2A -->`.
-- Two external module scripts at the end of body: `js/main.js` (will not
+- One external module script at the end of body: `/js/main.js` (will not
   exist yet; that is fine) and nothing else.
 
 **`tokens.css`**: everything in spec §7.3. Pick the neutral palette and the
@@ -76,7 +76,7 @@ look finished with the sample content in it. Screenshot it at 390px and
 
 ## Acceptance
 
-- Opening `src/index.html` from a local server shows the sample stack with no
+- Opening `http://localhost:8000/app/` from a local server shows the sample stack with no
   console errors and no CSP violations (the missing `main.js` 404 is expected).
 - Toggling `data-theme`, `data-density`, and `data-accent` on `<html>` in
   DevTools visibly changes the page.

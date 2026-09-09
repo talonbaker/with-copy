@@ -38,7 +38,9 @@ changing it here first.
 ├── CLAUDE.md                     project rules for agents
 ├── README.md
 ├── src/                          everything under here is deployed as-is
-│   ├── index.html                the app (single screen)
+│   ├── index.html                root: minimal forwarding page to /app/ until the landing page exists (D41)
+│   ├── app/
+│   │   └── index.html            the app (single screen), served at /app/
 │   ├── probe.html                temporary clipboard probe page (see §9)
 │   ├── manifest.webmanifest
 │   ├── sw.js                     service worker
@@ -73,6 +75,15 @@ changing it here first.
 
 `package.json` exists only for `"scripts": { "test": "node --test tests/" }`
 and `"type": "module"`. It has no `dependencies` and no `devDependencies`.
+
+**Paths.** The app page is `/app/index.html`, served at `/app/`. Every
+reference to CSS, JS, icons, and the manifest from any page is root-absolute
+(`/css/app.css`, `/js/main.js`, `/icons/icon.svg`, `/manifest.webmanifest`),
+never relative, so pages can move without breaking. The root `index.html` is
+a tiny page with the same CSP, a `<meta http-equiv="refresh" content="0; url=/app/">`,
+and a visible link to `/app/` for browsers that block the refresh. Share
+links are `https://withcopy.app/app/#s=...`. When the landing page is built
+(after MVP, D41) it replaces the root page and nothing else moves.
 
 ---
 
@@ -263,7 +274,7 @@ toast message (§7.5). Nothing is silent.
 ```js
 export async function encodeStack(stack);   // -> base64url string
 export async function decodeStack(str);     // -> validated stack object; throws Error with .errors
-export function buildShareUrl(encoded, origin = location.origin); // `${origin}/#s=${encoded}`
+export function buildShareUrl(encoded, origin = location.origin); // `${origin}/app/#s=${encoded}`
 export function parseShareFragment(hash);   // -> encoded string | null
 ```
 
@@ -343,7 +354,7 @@ two awaited clipboard calls and one toast.
 
 ## 7. UI structure and styling
 
-### 7.1 DOM skeleton (`index.html`)
+### 7.1 DOM skeleton (`app/index.html`)
 
 ```html
 <header class="wc-topbar">
@@ -483,12 +494,13 @@ they can be pasted into chat. The probe is removed before launch.
 
 ## 10. PWA and offline
 
-- `manifest.webmanifest`: name "w/copy", short_name "w/copy", start_url "/",
-  display "standalone", theme_color and background_color from the neutral
+- `manifest.webmanifest`: name "w/copy", short_name "w/copy", start_url "/app/",
+  scope "/", id "/app/", display "standalone", theme_color and background_color from the neutral
   palette, icons 192 and 512 plus a maskable 512.
 - `<link rel="apple-touch-icon">` 180px PNG, `apple-mobile-web-app-capable`,
   `apple-mobile-web-app-status-bar-style` default.
-- `sw.js`: precache list of every file under `src/` except `probe.*`.
+- `sw.js`: registered from `/sw.js` with scope `/`. Precache list of every
+  file under `src/` except `probe.*`, including `/app/` and `/`.
   Cache name includes `VERSION`. Install caches all; activate deletes other
   caches and claims clients; fetch is cache-first for precached URLs and
   network-only otherwise. `VERSION` is the literal `'dev'` in source and the

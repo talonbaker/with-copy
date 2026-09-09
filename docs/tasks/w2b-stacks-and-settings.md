@@ -19,7 +19,7 @@ disabled with a tooltip "Coming next".
 ## Files you own
 
 - `src/js/ui/side-panel.js`, `src/js/ui/settings.js`
-- Edits to `src/js/main.js` (wiring only), `src/index.html` (panel and settings templates), `src/css/app.css` (additions under a commented section)
+- Edits to `src/js/main.js` (wiring only), `src/app/index.html` (panel and settings templates), `src/css/app.css` (additions under a commented section)
 
 ## What to build
 
