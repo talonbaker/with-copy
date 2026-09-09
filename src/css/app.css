@@ -264,6 +264,11 @@ a:focus-visible,
 .wc-piece.wc-piece--dragging {
   box-shadow: var(--shadow-lg);
   z-index: 2;
+  /* Follows the pointer 1:1 — see the "drag to reorder" section below for
+     --wc-drag-y and why this overrides the base transition. */
+  transition: none;
+  transform: translate3d(0, var(--wc-drag-y, 0px), 0);
+  cursor: grabbing;
 }
 
 .wc-piece__bar {
@@ -1254,5 +1259,43 @@ dialog {
 .wc-btn:disabled:hover {
   background: var(--surface);
   border-color: var(--border);
+}
+
+/* ==========================================================================
+   Added in W3A: drag to reorder (drag.js)
+
+   Everything here is transform-only, on purpose: `.wc-piece` (above) already
+   transitions `transform`, so a sibling gaining/losing `--shift-up`/
+   `--shift-down` animates for free, on the compositor, with no layout or
+   paint — and goes instant under `prefers-reduced-motion` because
+   `tokens.css` zeroes `--dur` there, with nothing extra needed here. The
+   dragged card itself (`.wc-piece--dragging`, above) opts out of that
+   transition so it can follow the pointer without lag.
+
+   `--wc-drag-y` and `--wc-shift-h` are custom properties written by drag.js
+   via `style.setProperty`/`removeProperty` — a CSSOM write, not a
+   stylesheet or a `style` attribute, so the page's `style-src` CSP directive
+   does not apply to it (confirmed with a `securitypolicyviolation` listener
+   during manual testing: none fires).
+   ========================================================================== */
+
+.wc-piece--shift-down {
+  transform: translate3d(0, var(--wc-shift-h, 0px), 0);
+}
+
+.wc-piece--shift-up {
+  transform: translate3d(0, calc(-1 * var(--wc-shift-h, 0px)), 0);
+}
+
+/* Visually hidden but reachable by assistive tech — used for drag.js's
+   keyboard-reorder live-region announcement. Same clip technique as the
+   switch's native checkbox above. */
+.wc-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
 }
 

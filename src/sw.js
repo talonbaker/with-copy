@@ -36,6 +36,7 @@ const PRECACHE_URLS = [
   '/js/ui/toast.js',
   '/js/ui/undo.js',
   '/js/ui/stack-view.js',
+  '/js/ui/drag.js',
   '/js/ui/piece-card.js',
   '/js/ui/variants.js',
   '/js/ui/expand.js',

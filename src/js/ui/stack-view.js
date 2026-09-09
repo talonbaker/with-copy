@@ -9,6 +9,7 @@
 // whatever the user was typing in.
 
 import { renderPiece } from './piece-card.js';
+import { enableReorder } from './drag.js';
 
 function captureFocus(listEl) {
   const active = document.activeElement;
@@ -42,6 +43,23 @@ function restoreFocus(listEl, focusInfo) {
   }
 }
 
+/**
+ * Moves one piece from `fromIndex` to `toIndex` in the active stack and
+ * commits it, so the change re-renders and persists (`store.commit` already
+ * schedules a save) like any other structural edit.
+ */
+function reorderPieces(ctx, fromIndex, toIndex) {
+  ctx.store.commit((state) => {
+    const stack = ctx.getActiveStack(state);
+    if (!stack) return;
+    const { pieces } = stack;
+    if (fromIndex < 0 || fromIndex >= pieces.length) return;
+    const clampedTo = Math.max(0, Math.min(toIndex, pieces.length - 1));
+    const [moved] = pieces.splice(fromIndex, 1);
+    pieces.splice(clampedTo, 0, moved);
+  });
+}
+
 /** Rebuilds the piece list for the active stack. */
 export function renderStack(state, ctx) {
   const listEl = document.querySelector('[data-role="stack"]');
@@ -59,4 +77,13 @@ export function renderStack(state, ctx) {
 
   restoreFocus(listEl, focusInfo);
   window.scrollTo(0, scrollY);
+
+  // Idempotent: the first call binds the drag/keyboard listeners on this
+  // list element, every later call (i.e. every render) just refreshes the
+  // `onReorder` closure — see drag.js.
+  enableReorder(listEl, {
+    handleSelector: '.wc-handle',
+    itemSelector: '.wc-piece[data-id]',
+    onReorder: (fromIndex, toIndex) => reorderPieces(ctx, fromIndex, toIndex),
+  });
 }
