@@ -1,0 +1,302 @@
+/*
+ * w/copy design tokens
+ * Light values live on bare :root. Dark values are redefined twice, once
+ * under the system preference (guarded so an explicit light choice wins)
+ * and once under an explicit data-theme="dark" (so the toggle wins in both
+ * directions). Density and accent are attributes on <html>.
+ */
+
+:root {
+  /* ---- neutral scale (light) ---- */
+  --bg: #faf8f5;
+  --surface: #ffffff;
+  --surface-2: #f2efe9;
+  --border: #e7e2d9;
+  --text: #201c17;
+  --text-muted: #6d6459;
+  --text-on-accent-muted: rgba(255, 255, 255, 0.8);
+
+  /* card treatment: soft shadow + invisible border in light,
+     swapped for a hairline border + no shadow in dark */
+  --card-border-color: transparent;
+  --card-shadow: var(--shadow-sm);
+
+  --backdrop: rgba(32, 26, 18, 0.42);
+
+  /* ---- accents: eight named hues, light values ----
+     each pair (accent, accent-contrast) checked for >= 4.5:1 */
+  --accent-green: #15803d;
+  --accent-green-contrast: #ffffff;
+  --accent-green-soft: #dcfce7;
+
+  --accent-orange: #c2410c;
+  --accent-orange-contrast: #ffffff;
+  --accent-orange-soft: #ffedd5;
+
+  --accent-blue: #1d4ed8;
+  --accent-blue-contrast: #ffffff;
+  --accent-blue-soft: #dbeafe;
+
+  --accent-purple: #7e22ce;
+  --accent-purple-contrast: #ffffff;
+  --accent-purple-soft: #f3e8ff;
+
+  --accent-pink: #be185d;
+  --accent-pink-contrast: #ffffff;
+  --accent-pink-soft: #fce7f3;
+
+  --accent-teal: #0f766e;
+  --accent-teal-contrast: #ffffff;
+  --accent-teal-soft: #ccfbf1;
+
+  --accent-red: #b91c1c;
+  --accent-red-contrast: #ffffff;
+  --accent-red-soft: #fee2e2;
+
+  --accent-yellow: #a16207;
+  --accent-yellow-contrast: #ffffff;
+  --accent-yellow-soft: #fef9c3;
+
+  /* active accent, resolved from data-accent below; green until then */
+  --accent: var(--accent-green);
+  --accent-contrast: var(--accent-green-contrast);
+  --accent-soft: var(--accent-green-soft);
+
+  /* ---- kind colors: small, muted, independent of stack accent ---- */
+  --kind-header: #3f6f92;
+  --kind-footer: #a1671f;
+  --kind-text: #6f5a9c;
+  --kind-clipboard: #6d6459;
+
+  /* ---- spacing ---- */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+
+  /* density-sensitive spacing (comfortable defaults; compact overrides below) */
+  --card-pad: var(--space-4);
+  --card-gap: var(--space-3);
+  --bar-gap: var(--space-2);
+  --line-height: 1.55;
+
+  /* ---- radius ---- */
+  --radius-sm: 8px;
+  --radius: 14px;
+  --radius-lg: 22px;
+  --radius-full: 999px;
+
+  /* ---- shadow (light mode: soft; see dark override) ---- */
+  --shadow-sm: 0 1px 2px rgba(32, 26, 18, 0.06), 0 1px 1px rgba(32, 26, 18, 0.05);
+  --shadow-md: 0 10px 28px rgba(32, 26, 18, 0.12), 0 2px 8px rgba(32, 26, 18, 0.06);
+  --shadow-lg: 0 28px 72px rgba(32, 26, 18, 0.22), 0 10px 28px rgba(32, 26, 18, 0.12);
+
+  /* ---- type ---- */
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
+    Arial, sans-serif;
+  --font-mono: var(--font-ui);
+  --fs-xs: 0.75rem;
+  --fs-sm: 0.8125rem;
+  --fs-base: 0.9375rem;
+  --fs-md: 1.0625rem;
+  --fs-lg: 1.375rem;
+  --fs-xl: 1.75rem;
+
+  /* ---- motion ---- */
+  --dur-fast: 120ms;
+  --dur: 200ms;
+  --dur-slow: 320ms;
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-out: cubic-bezier(0, 0, 0.2, 1);
+
+  /* ---- z-index ---- */
+  --z-actionbar: 10;
+  --z-panel: 30;
+  --z-toast: 50;
+
+  color-scheme: light;
+}
+
+/* ---- density ---- */
+:root[data-density="compact"] {
+  --card-pad: var(--space-3);
+  --card-gap: var(--space-2);
+  --bar-gap: var(--space-1);
+  --line-height: 1.4;
+  --fs-base: 0.875rem;
+  --fs-md: 0.9375rem;
+}
+
+/* ---- accent selection: map the named hue onto the working tokens ---- */
+:root[data-accent="green"] {
+  --accent: var(--accent-green);
+  --accent-contrast: var(--accent-green-contrast);
+  --accent-soft: var(--accent-green-soft);
+}
+:root[data-accent="orange"] {
+  --accent: var(--accent-orange);
+  --accent-contrast: var(--accent-orange-contrast);
+  --accent-soft: var(--accent-orange-soft);
+}
+:root[data-accent="blue"] {
+  --accent: var(--accent-blue);
+  --accent-contrast: var(--accent-blue-contrast);
+  --accent-soft: var(--accent-blue-soft);
+}
+:root[data-accent="purple"] {
+  --accent: var(--accent-purple);
+  --accent-contrast: var(--accent-purple-contrast);
+  --accent-soft: var(--accent-purple-soft);
+}
+:root[data-accent="pink"] {
+  --accent: var(--accent-pink);
+  --accent-contrast: var(--accent-pink-contrast);
+  --accent-soft: var(--accent-pink-soft);
+}
+:root[data-accent="teal"] {
+  --accent: var(--accent-teal);
+  --accent-contrast: var(--accent-teal-contrast);
+  --accent-soft: var(--accent-teal-soft);
+}
+:root[data-accent="red"] {
+  --accent: var(--accent-red);
+  --accent-contrast: var(--accent-red-contrast);
+  --accent-soft: var(--accent-red-soft);
+}
+:root[data-accent="yellow"] {
+  --accent: var(--accent-yellow);
+  --accent-contrast: var(--accent-yellow-contrast);
+  --accent-soft: var(--accent-yellow-soft);
+}
+
+/* ---- dark mode: system preference (an explicit light choice wins) ---- */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+
+    --bg: #16130f;
+    --surface: #1e1a15;
+    --surface-2: #27221c;
+    --border: #3a332a;
+    --text: #f2ede4;
+    --text-muted: #a89e8f;
+    --text-on-accent-muted: rgba(10, 8, 6, 0.7);
+
+    --card-border-color: var(--border);
+    --card-shadow: none;
+
+    --backdrop: rgba(0, 0, 0, 0.55);
+
+    --accent-green: #4ade80;
+    --accent-green-contrast: #052e16;
+    --accent-green-soft: #16321f;
+
+    --accent-orange: #fb923c;
+    --accent-orange-contrast: #431407;
+    --accent-orange-soft: #3a2210;
+
+    --accent-blue: #60a5fa;
+    --accent-blue-contrast: #172554;
+    --accent-blue-soft: #1b2740;
+
+    --accent-purple: #c084fc;
+    --accent-purple-contrast: #3b0764;
+    --accent-purple-soft: #2c1c3e;
+
+    --accent-pink: #f472b6;
+    --accent-pink-contrast: #500724;
+    --accent-pink-soft: #3c1c2c;
+
+    --accent-teal: #2dd4bf;
+    --accent-teal-contrast: #042f2e;
+    --accent-teal-soft: #123331;
+
+    --accent-red: #f87171;
+    --accent-red-contrast: #450a0a;
+    --accent-red-soft: #3a1a1a;
+
+    --accent-yellow: #facc15;
+    --accent-yellow-contrast: #422006;
+    --accent-yellow-soft: #392c10;
+
+    --kind-header: #8bb8de;
+    --kind-footer: #dba668;
+    --kind-text: #b6a4de;
+    --kind-clipboard: #a89e8f;
+
+    --shadow-sm: none;
+    --shadow-md: 0 10px 28px rgba(0, 0, 0, 0.4);
+    --shadow-lg: 0 28px 72px rgba(0, 0, 0, 0.55);
+  }
+}
+
+/* ---- dark mode: explicit override wins either direction ---- */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg: #16130f;
+  --surface: #1e1a15;
+  --surface-2: #27221c;
+  --border: #3a332a;
+  --text: #f2ede4;
+  --text-muted: #a89e8f;
+  --text-on-accent-muted: rgba(10, 8, 6, 0.7);
+
+  --card-border-color: var(--border);
+  --card-shadow: none;
+
+  --backdrop: rgba(0, 0, 0, 0.55);
+
+  --accent-green: #4ade80;
+  --accent-green-contrast: #052e16;
+  --accent-green-soft: #16321f;
+
+  --accent-orange: #fb923c;
+  --accent-orange-contrast: #431407;
+  --accent-orange-soft: #3a2210;
+
+  --accent-blue: #60a5fa;
+  --accent-blue-contrast: #172554;
+  --accent-blue-soft: #1b2740;
+
+  --accent-purple: #c084fc;
+  --accent-purple-contrast: #3b0764;
+  --accent-purple-soft: #2c1c3e;
+
+  --accent-pink: #f472b6;
+  --accent-pink-contrast: #500724;
+  --accent-pink-soft: #3c1c2c;
+
+  --accent-teal: #2dd4bf;
+  --accent-teal-contrast: #042f2e;
+  --accent-teal-soft: #123331;
+
+  --accent-red: #f87171;
+  --accent-red-contrast: #450a0a;
+  --accent-red-soft: #3a1a1a;
+
+  --accent-yellow: #facc15;
+  --accent-yellow-contrast: #422006;
+  --accent-yellow-soft: #392c10;
+
+  --kind-header: #8bb8de;
+  --kind-footer: #dba668;
+  --kind-text: #b6a4de;
+  --kind-clipboard: #a89e8f;
+
+  --shadow-sm: none;
+  --shadow-md: 0 10px 28px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 28px 72px rgba(0, 0, 0, 0.55);
+}
+
+/* ---- motion: zero every duration when the user asks for less of it ---- */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-fast: 0ms;
+    --dur: 0ms;
+    --dur-slow: 0ms;
+  }
+}
