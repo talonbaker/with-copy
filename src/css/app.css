@@ -1204,3 +1204,55 @@ dialog {
   display: none;
 }
 
+/* ==========================================================================
+   Added in W2B: side panel (stacks list, delete, top bar rename) and
+   settings (disabled share/QR, import file input)
+   ========================================================================== */
+
+.wc-stackrow {
+  outline-offset: -2px;
+}
+
+/* Delete lives inside the row alongside the switch-stack tap target; give it
+   a consistent gap from the check mark whether or not the check is visible. */
+.wc-stackrow > .wc-iconbtn {
+  margin-left: var(--space-1);
+  flex: none;
+}
+
+/* Inline rename input for the top bar stack title, matching the accent
+   underline treatment of the variant rename input in piece cards. */
+.wc-stackname {
+  cursor: pointer;
+}
+
+.wc-stackname--renaming {
+  cursor: text;
+}
+
+.wc-stackname__input {
+  width: 100%;
+  max-width: 100%;
+  padding: 0;
+  border: none;
+  border-bottom: 1.5px solid var(--accent);
+  border-radius: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-weight: 700;
+  text-align: center;
+}
+
+/* Settings: a disabled action button (share link / QR, "Coming next") reads
+   as inert rather than merely muted. */
+.wc-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.wc-btn:disabled:hover {
+  background: var(--surface);
+  border-color: var(--border);
+}
+

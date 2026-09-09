@@ -105,7 +105,9 @@
   <button class="wc-iconbtn" data-action="open-panel" aria-label="Stacks">
     <svg class="wc-icon" aria-hidden="true"><use href="#icon-menu"></use></svg>
   </button>
-  <h1 class="wc-stackname" data-role="stack-name">My first stack</h1>
+  <h1 class="wc-stackname" data-action="begin-rename-stack" tabindex="0">
+    <span class="wc-stackname__text" data-role="stack-name">My first stack</span>
+  </h1>
   <button class="wc-iconbtn" data-action="open-settings" aria-label="Settings">
     <svg class="wc-icon" aria-hidden="true"><use href="#icon-gear"></use></svg>
   </button>
@@ -176,11 +178,11 @@
         <div class="wc-settings__row">
           <span>Share this stack</span>
           <div class="wc-settings__row-actions">
-            <button class="wc-btn" type="button" data-action="copy-share-link">
+            <button class="wc-btn" type="button" data-action="copy-share-link" disabled title="Coming next">
               <svg class="wc-icon" aria-hidden="true"><use href="#icon-link"></use></svg>
               Copy link
             </button>
-            <button class="wc-btn" type="button" data-action="show-qr">
+            <button class="wc-btn" type="button" data-action="show-qr" disabled title="Coming next">
               <svg class="wc-icon" aria-hidden="true"><use href="#icon-qr"></use></svg>
               Show QR
             </button>
@@ -200,6 +202,7 @@
             <button class="wc-btn" type="button" data-action="import-file">Choose file</button>
             <button class="wc-btn wc-btn--primary" type="button" data-action="import-apply">Import</button>
           </div>
+          <input type="file" data-role="import-file-input" accept="application/json,.json" hidden />
           <pre class="wc-settings__errors" data-role="import-errors" hidden></pre>
         </div>
       </section>
@@ -308,10 +311,13 @@
 </template>
 
 <template id="tpl-stack-row">
-  <li class="wc-stackrow" data-id="" data-accent="" data-active="false">
+  <li class="wc-stackrow" data-id="" data-accent="" data-active="false" data-action="switch-stack" tabindex="0">
     <span class="wc-stackrow__dot" aria-hidden="true"></span>
     <span class="wc-stackrow__name" data-role="stack-row-name"></span>
     <svg class="wc-icon wc-stackrow__check" data-role="active-mark" aria-hidden="true"><use href="#icon-check"></use></svg>
+    <button class="wc-iconbtn wc-iconbtn--sm" type="button" data-action="delete-stack" aria-label="Delete stack">
+      <svg class="wc-icon" aria-hidden="true"><use href="#icon-delete"></use></svg>
+    </button>
   </li>
 </template>
 

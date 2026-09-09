@@ -39,6 +39,8 @@ const PRECACHE_URLS = [
   '/js/ui/piece-card.js',
   '/js/ui/variants.js',
   '/js/ui/expand.js',
+  '/js/ui/side-panel.js',
+  '/js/ui/settings.js',
   '/icons/icon.svg',
   '/icons/icon-192.png',
   '/icons/icon-512.png',

@@ -34,6 +34,24 @@ import {
   deleteVariant,
 } from './ui/variants.js';
 import { openExpand, patchExpandText, closeExpand, onExpandClosed } from './ui/expand.js';
+import {
+  renderStackList,
+  switchStack,
+  createNewStack,
+  deleteStack,
+  beginRenameStackName,
+  commitRenameStackName,
+  cancelRenameStackName,
+} from './ui/side-panel.js';
+import {
+  renderSettings,
+  initVersion,
+  setTheme,
+  setDensity,
+  copyExportJson,
+  downloadExportJson,
+  applyImportText,
+} from './ui/settings.js';
 
 // ---------------------------------------------------------------------------
 // Store + root render
@@ -72,6 +90,8 @@ function render(state) {
   const nameEl = document.querySelector('[data-role="stack-name"]');
   if (nameEl) nameEl.textContent = stack ? stack.name : '';
   renderStack(state, ctx);
+  renderStackList(state, ctx);
+  renderSettings(state, ctx);
 }
 
 store.subscribe(render);
@@ -302,6 +322,7 @@ document.addEventListener('click', (event) => {
     case 'open-settings': {
       const dialog = document.querySelector('[data-role="settings"]');
       if (dialog) dialog.showModal();
+      initVersion();
       break;
     }
     case 'close-settings': {
@@ -361,9 +382,45 @@ document.addEventListener('click', (event) => {
       if (dialog) dialog.close();
       break;
     }
+    case 'switch-stack':
+      switchStack(actionEl.dataset.id, ctx);
+      closePanel();
+      break;
+    case 'new-stack': {
+      const newId = createNewStack(ctx);
+      closePanel();
+      if (newId) beginRenameStackName();
+      break;
+    }
+    case 'delete-stack': {
+      const row = actionEl.closest('.wc-stackrow');
+      if (row) deleteStack(row.dataset.id, ctx);
+      break;
+    }
+    case 'begin-rename-stack':
+      beginRenameStackName();
+      break;
+    case 'export-copy':
+      copyExportJson(ctx);
+      break;
+    case 'export-download':
+      downloadExportJson(ctx);
+      break;
+    case 'import-file': {
+      const fileInput = document.querySelector('[data-role="import-file-input"]');
+      if (fileInput) fileInput.click();
+      break;
+    }
+    case 'import-apply': {
+      const dialog = document.querySelector('[data-role="settings"]');
+      const textarea = dialog && dialog.querySelector('[data-role="import-text"]');
+      if (textarea) applyImportText(textarea.value, ctx);
+      break;
+    }
+    // 'copy-share-link' and 'show-qr' are disabled buttons (tooltip "Coming
+    // next") until the share-link task; disabled buttons never fire click,
+    // so no case is needed for them.
     default:
-      // Settings/panel content actions (share link, export/import, stack
-      // switching) belong to the next task; an unhandled action is a no-op.
       break;
   }
 });
@@ -379,6 +436,22 @@ document.addEventListener('change', (event) => {
     const row = target.closest('[data-id]');
     const pieceEl = target.closest('.wc-piece');
     if (row && pieceEl) selectVariant(pieceEl.dataset.id, row.dataset.id, ctx);
+    return;
+  }
+  if (target.matches('[data-role="theme"] input[type="radio"]')) {
+    setTheme(target.value, ctx);
+    return;
+  }
+  if (target.matches('[data-role="density"] input[type="radio"]')) {
+    setDensity(target.value, ctx);
+    return;
+  }
+  if (target.matches('[data-role="import-file-input"]')) {
+    const file = target.files && target.files[0];
+    if (file) {
+      file.text().then((text) => applyImportText(text, ctx));
+    }
+    target.value = ''; // allow re-selecting the same file later
   }
 });
 
@@ -410,6 +483,29 @@ document.addEventListener('keydown', (event) => {
     }
     return;
   }
+  if (target.matches && target.matches('.wc-stackname__input')) {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      target.blur();
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      target.dataset.cancelled = 'true';
+      cancelRenameStackName(target);
+    }
+    return;
+  }
+  // A stack row and the top bar title are not native buttons (a row also
+  // hosts its own nested delete button), so give them keyboard activation by
+  // reusing the click handler above via a synthetic click.
+  if (
+    (event.key === 'Enter' || event.key === ' ') &&
+    target.matches &&
+    target.matches('[data-action="switch-stack"], [data-action="begin-rename-stack"]')
+  ) {
+    event.preventDefault();
+    target.click();
+    return;
+  }
   if (event.key === 'Escape' && isPanelOpen()) {
     closePanel();
   }
@@ -420,6 +516,11 @@ document.addEventListener('focusout', (event) => {
   if (target.matches && target.matches('.wc-variant__rename-input')) {
     if (target.dataset.cancelled === 'true') return;
     commitRenameVariant(target, ctx);
+    return;
+  }
+  if (target.matches && target.matches('.wc-stackname__input')) {
+    if (target.dataset.cancelled === 'true') return;
+    commitRenameStackName(target, ctx);
   }
 });
 
