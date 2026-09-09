@@ -38,6 +38,6 @@ no dependencies, no build step, no backend.
 ## Commands
 
 ```
-npm test          # node --test tests/
+npm test          # node --test tests/**/*.test.js
 python3 -m http.server -d src 8000   # serve locally at http://localhost:8000
 ```

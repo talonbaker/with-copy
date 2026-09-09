@@ -73,7 +73,7 @@ changing it here first.
 └── docs/
 ```
 
-`package.json` exists only for `"scripts": { "test": "node --test tests/" }`
+`package.json` exists only for `"scripts": { "test": "node --test tests/**/*.test.js" }`
 and `"type": "module"`. It has no `dependencies` and no `devDependencies`.
 
 **Paths.** The app page is `/app/index.html`, served at `/app/`. Every
@@ -540,7 +540,8 @@ inject a `data:` script or remote image.
 
 ## 13. Testing
 
-`npm test` runs `node --test tests/`. Required coverage:
+`npm test` runs `node --test tests/**/*.test.js` (a bare directory argument
+does not discover files on Node 22). Required coverage:
 
 - `schema.test.js`: defaults validate; every rule in §3 has a failing case
   with the expected path; migrate round-trips version 1.
