@@ -13,7 +13,7 @@ import {
   validateState,
   validateStack,
   migrate,
-} from '../src/js/schema.js';
+} from '../js/schema.js';
 
 describe('newId', () => {
   test('has the expected shape and prefix', () => {

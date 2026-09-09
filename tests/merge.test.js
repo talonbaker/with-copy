@@ -1,7 +1,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { createPiece, createStack } from '../src/js/schema.js';
-import { needsClipboard, assemble, shouldSkip } from '../src/js/merge.js';
+import { createPiece, createStack } from '../js/schema.js';
+import { needsClipboard, assemble, shouldSkip } from '../js/merge.js';
 
 function stackWith(pieces, overrides = {}) {
   const base = createStack({ name: 'Test', accent: 'blue' });

@@ -9,18 +9,18 @@
 // every deploy gets its own cache name and old caches are cleaned up on the
 // next activate.
 
-const VERSION = 'dev';
+const VERSION = '2026-09-09.1';
 const CACHE_NAME = `wcopy-${VERSION}`;
 
-// Every file under src/ that the app needs to run offline, as the
-// root-absolute paths clients actually request, except src/probe.html,
-// src/js/probe.js, and src/css/probe.css (the probe is temporary and never
+// Every site file that the app needs to run offline, as the
+// root-absolute paths clients actually request, except /probe.html,
+// /js/probe.js, and /css/probe.css (the probe is temporary and never
 // needs to work offline) and sw.js itself (the browser manages the service
 // worker script's own update checks outside Cache Storage; precaching it
 // here would add nothing and risks confusing that mechanism).
 //
 // Keep this list exact: cache.addAll rejects, and the install fails, if any
-// URL 404s. Every task that adds a file under src/ appends it here.
+// URL 404s. Every task that adds a site file appends it here.
 const PRECACHE_URLS = [
   '/',
   '/app/',

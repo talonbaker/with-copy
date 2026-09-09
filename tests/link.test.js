@@ -1,12 +1,12 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { createStack } from '../src/js/schema.js';
+import { createStack } from '../js/schema.js';
 import {
   encodeStack,
   decodeStack,
   buildShareUrl,
   parseShareFragment,
-} from '../src/js/link.js';
+} from '../js/link.js';
 
 describe('encodeStack / decodeStack', () => {
   test('round-trips a stack, assigning nothing (ids preserved by the codec itself)', async () => {

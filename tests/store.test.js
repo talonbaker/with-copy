@@ -6,8 +6,8 @@ import {
   saveState,
   loadLastOutput,
   saveLastOutput,
-} from '../src/js/store.js';
-import { createDefaultState } from '../src/js/schema.js';
+} from '../js/store.js';
+import { createDefaultState } from '../js/schema.js';
 
 function flushMicrotasks() {
   return new Promise((resolve) => queueMicrotask(resolve));
