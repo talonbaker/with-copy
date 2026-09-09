@@ -27,8 +27,27 @@ the old one.
 | D19 | 2026-09-08 | **Reordering.** Long-press then drag is the target. Up and down buttons are an acceptable MVP fallback. | Product owner, answer to Q10 |
 | D20 | 2026-09-08 | **App switches.** Two context switches per iteration is the accepted MVP shape. Desktop companion (D4) and an Android share target are the later fixes. | Product owner, answer to Q12 |
 | D21 | 2026-09-08 | **PWA.** Installable to the home screen with offline caching in MVP. | Product owner, answer to Q13 |
+| D22 | 2026-09-09 | **Design handoff is authoritative for product, UX, and visual design.** `docs/design/2026-09-09-design-handoff.md` wins over every earlier document on those topics. The technical spec wins on low-level architecture. | Product owner |
+| D23 | 2026-09-09 | **Multiple stacks.** Supersedes D13. A stack is a named, ordered collection of pieces with its own accent color. Pieces are never shared across stacks. App opens to the last-used stack. New stacks start from the header/clipboard/footer template. | Design handoff §2 |
+| D24 | 2026-09-09 | **Clipboard slot is toggleable.** Supersedes the "always present" reading of D14. Still exactly one per stack, but it can be disabled like any piece. When disabled, the app does not read the clipboard at all. | Design handoff §2 |
+| D25 | 2026-09-09 | **Growth guard.** The app remembers its own last output and skips wrapping when the clipboard exactly equals it, with a toast. Content-pattern detection is explicitly rejected. | Design handoff §2 |
+| D26 | 2026-09-09 | **Editing model.** Inline editing on the card, a fill-screen expand for long text, no confirmation dialogs, delete-then-undo modeled on Gmail. | Design handoff §2 |
+| D27 | 2026-09-09 | **Variants.** Amends D17. Tap reveals the full list; one active. Per-variant enable/disable is dropped; enable/disable lives on the piece. Deleting a variant (with undo) covers the rest. | Design handoff §2, spec simplification |
+| D28 | 2026-09-09 | **Onboarding.** Ships with a self-explaining example header and footer, never blank. | Design handoff §3 |
+| D29 | 2026-09-09 | **Visual design.** Single screen; left slide-out panel of stacks; gear to a settings screen; modern and minimal; neutral UI with one colorful action button, small type-label accents, and a per-stack accent. Light and dark with system default and manual override. Compact and comfortable density. | Design handoff §4 |
+| D30 | 2026-09-09 | **Toasts for every outcome.** Success and every error, never silent. Top on phone. Bottom on desktop, chosen as the industry-standard default since the handoff left it open. | Design handoff §4, §9 |
+| D31 | 2026-09-09 | **Platform.** Amends D2. Chrome on desktop and on iPhone. iPhone Chrome is WebKit, so clipboard behaviour follows Safari rules. No Android. | Design handoff §5 |
+| D32 | 2026-09-09 | **No build step. Zero tooling.** Supersedes the open build-step item. Source is served as-is. A deploy workflow may copy files and stamp a version string; it may not transform code. | Design handoff §5 |
+| D33 | 2026-09-09 | **No numeric performance budgets.** Supersedes the proposed budgets. The bar is qualitative: lean, instantaneous. | Design handoff §5 |
+| D34 | 2026-09-09 | **JSON is the storage format and a power-user escape hatch** via export/import in Settings. Never the primary interaction. Must be lintable, meaning validation errors carry a path and a message. | Design handoff §6 |
+| D35 | 2026-09-09 | **Cross-device transfer** by a compressed link in the URL fragment, optionally a QR code on desktop. In scope for MVP. | Design handoff §7 |
+| D36 | 2026-09-09 | **Hosting: GitHub Pages** for now, custom domain withcopy.app, DNS stays on Cloudflare. | Product owner |
+| D37 | 2026-09-09 | **Testing strategy deferred.** Vitest and Playwright are not adopted. Until decided, pure logic modules are tested with Node's built-in `node:test` runner, which adds no dependency and no tooling, so the "suite green before commit" rule still has something to run. UI is verified against a written manual checklist. | Product owner, with the minimum chosen by the orchestrating agent |
+| D38 | 2026-09-09 | **No separate landing page in MVP.** The app is served at the root. The onboarding content explains the product. A landing page can be added later without rework. | Orchestrating agent, flagged to the product owner |
+| D39 | 2026-09-09 | **Separator is per stack**, default blank line, no UI in MVP (editable via JSON). Refines D10 now that stacks exist. | Orchestrating agent, technical |
+| D40 | 2026-09-09 | **Work is delegated to Sonnet agents only**, orchestrated from this session. No Opus agents. | Product owner |
 
 ## Open
 
-Tracked in `2026-09-08-path-to-mvp.md` §2. As of 2026-09-08: preview, hosting
-and domain, testing, build step, performance budget numbers.
+- Testing strategy beyond `node:test` (D37).
+- Toast placement on desktop is a default, not a preference (D30).

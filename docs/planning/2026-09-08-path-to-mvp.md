@@ -1,5 +1,11 @@
 # w/copy: Path to MVP
 
+> **Superseded on 2026-09-09.** The product owner completed the design
+> conversation elsewhere and supplied `docs/design/2026-09-09-design-handoff.md`.
+> Several items below (single stack, numeric budgets, build step, the
+> question queue) are no longer current. The live plan is the technical spec
+> at `docs/spec/` plus the task briefs at `docs/tasks/`. Kept for history.
+
 **Date:** 2026-09-08 (revised the same day after the product owner's answers)
 **Status:** Planning document. No design is approved and no code exists.
 **Supersedes:** the question queue in `docs/handoff/2026-09-07-w-copy-brainstorm-handoff.md`
