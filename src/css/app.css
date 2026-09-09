@@ -1120,3 +1120,87 @@ dialog {
   }
 }
 
+/* ==========================================================================
+   Added in W2A: add-piece popover
+   ========================================================================== */
+
+.wc-addwrap {
+  position: relative;
+}
+
+.wc-addmenu {
+  position: absolute;
+  z-index: var(--z-panel);
+  bottom: calc(100% + var(--space-2));
+  left: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-2);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  transform-origin: bottom center;
+  transition: opacity var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
+}
+
+.wc-addmenu[hidden] {
+  display: none;
+}
+
+@starting-style {
+  .wc-addmenu:not([hidden]) {
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+  }
+}
+
+.wc-addmenu__item {
+  padding: var(--space-3);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  font-size: var(--fs-base);
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease);
+}
+
+.wc-addmenu__item:hover {
+  background: var(--surface-2);
+}
+
+/* ==========================================================================
+   Added in W2A: inline variant rename input
+   ========================================================================== */
+
+.wc-variant__rename-input {
+  flex: 1;
+  min-width: 0;
+  padding: 2px var(--space-1);
+  border: none;
+  border-bottom: 1.5px solid var(--accent);
+  border-radius: 0;
+  background: transparent;
+  color: var(--text);
+  font-size: var(--fs-sm);
+}
+
+.wc-variant__radio--renaming {
+  flex: none;
+}
+
+/* Defect fix: an author rule's `display` always beats the UA stylesheet's
+   `[hidden] { display: none }`, regardless of specificity — so `.wc-variants`
+   (which sets `display: flex` above) needs its own [hidden] override or the
+   collapsed variants region never actually collapses. */
+.wc-variants[hidden] {
+  display: none;
+}
+

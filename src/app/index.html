@@ -112,113 +112,19 @@
 </header>
 
 <main class="wc-main">
-  <ol class="wc-stack" data-role="stack">
-    <!-- sample content: remove in W2A -->
+  <ol class="wc-stack" data-role="stack"></ol>
 
-    <li class="wc-piece" data-id="pc_sample0001" data-kind="header" data-enabled="true">
-      <div class="wc-piece__bar">
-        <label class="wc-switch">
-          <input type="checkbox" checked aria-label="Enabled" />
-          <span class="wc-switch__track"><span class="wc-switch__thumb"></span></span>
-        </label>
-        <button class="wc-piece__label" type="button" data-action="toggle-variants" aria-expanded="true">
-          <span class="wc-kind">Header</span>
-          <span class="wc-piece__variantname">Default</span>
-        </button>
-        <button class="wc-iconbtn" type="button" data-action="expand" aria-label="Fill screen">
-          <svg class="wc-icon" aria-hidden="true"><use href="#icon-expand"></use></svg>
-        </button>
-        <button class="wc-iconbtn" type="button" data-action="delete-piece" aria-label="Delete">
-          <svg class="wc-icon" aria-hidden="true"><use href="#icon-delete"></use></svg>
-        </button>
-        <button class="wc-handle" type="button" aria-label="Drag to reorder" tabindex="0">
-          <svg class="wc-icon" aria-hidden="true"><use href="#icon-drag"></use></svg>
-        </button>
-      </div>
-      <textarea class="wc-piece__text" data-role="text" spellcheck="false" rows="2">Hi, this is w/copy. Everything below this line was on your clipboard when you pressed the button.</textarea>
-      <div class="wc-variants">
-        <ul class="wc-variantlist">
-          <li class="wc-variant" data-id="var_sample0001">
-            <label class="wc-variant__radio">
-              <input type="radio" name="variant-pc_sample0001" checked />
-              <span class="wc-variant__label" data-role="variant-label">Default</span>
-            </label>
-            <button class="wc-variant__rename" type="button" data-action="rename-variant">Rename</button>
-            <button class="wc-iconbtn wc-iconbtn--sm" type="button" data-action="delete-variant" aria-label="Delete variant">
-              <svg class="wc-icon" aria-hidden="true"><use href="#icon-delete"></use></svg>
-            </button>
-          </li>
-          <li class="wc-variant" data-id="var_sample0002">
-            <label class="wc-variant__radio">
-              <input type="radio" name="variant-pc_sample0001" />
-              <span class="wc-variant__label" data-role="variant-label">Casual</span>
-            </label>
-            <button class="wc-variant__rename" type="button" data-action="rename-variant">Rename</button>
-            <button class="wc-iconbtn wc-iconbtn--sm" type="button" data-action="delete-variant" aria-label="Delete variant">
-              <svg class="wc-icon" aria-hidden="true"><use href="#icon-delete"></use></svg>
-            </button>
-          </li>
-        </ul>
-        <button class="wc-variants__add" type="button" data-action="add-variant">
-          <svg class="wc-icon" aria-hidden="true"><use href="#icon-add"></use></svg>
-          Add variant
-        </button>
-      </div>
-    </li>
-
-    <li class="wc-piece wc-piece--clipboard" data-id="pc_clip0000" data-kind="clipboard" data-enabled="true">
-      <div class="wc-piece__bar">
-        <label class="wc-switch">
-          <input type="checkbox" checked aria-label="Enabled" />
-          <span class="wc-switch__track"><span class="wc-switch__thumb"></span></span>
-        </label>
-        <span class="wc-piece__label wc-piece__label--static">
-          <span class="wc-kind">Clipboard</span>
-        </span>
-        <button class="wc-iconbtn" type="button" data-action="delete-piece" aria-label="Delete">
-          <svg class="wc-icon" aria-hidden="true"><use href="#icon-delete"></use></svg>
-        </button>
-        <button class="wc-handle" type="button" aria-label="Drag to reorder" tabindex="0">
-          <svg class="wc-icon" aria-hidden="true"><use href="#icon-drag"></use></svg>
-        </button>
-      </div>
-      <div class="wc-clipboard-slot">
-        <svg class="wc-icon wc-clipboard-slot__icon" aria-hidden="true"><use href="#icon-clipboard"></use></svg>
-        <p class="wc-clipboard-slot__caption">Your clipboard goes here</p>
-      </div>
-    </li>
-
-    <li class="wc-piece" data-id="pc_sample0003" data-kind="footer" data-enabled="true">
-      <div class="wc-piece__bar">
-        <label class="wc-switch">
-          <input type="checkbox" checked aria-label="Enabled" />
-          <span class="wc-switch__track"><span class="wc-switch__thumb"></span></span>
-        </label>
-        <button class="wc-piece__label" type="button" data-action="toggle-variants" aria-expanded="false">
-          <span class="wc-kind">Footer</span>
-          <span class="wc-piece__variantname">Default</span>
-        </button>
-        <button class="wc-iconbtn" type="button" data-action="expand" aria-label="Fill screen">
-          <svg class="wc-icon" aria-hidden="true"><use href="#icon-expand"></use></svg>
-        </button>
-        <button class="wc-iconbtn" type="button" data-action="delete-piece" aria-label="Delete">
-          <svg class="wc-icon" aria-hidden="true"><use href="#icon-delete"></use></svg>
-        </button>
-        <button class="wc-handle" type="button" aria-label="Drag to reorder" tabindex="0">
-          <svg class="wc-icon" aria-hidden="true"><use href="#icon-drag"></use></svg>
-        </button>
-      </div>
-      <textarea class="wc-piece__text" data-role="text" spellcheck="false" rows="2">Everything above this line was your clipboard. Edit these pieces, add your own, and press w/copy again.</textarea>
-      <div class="wc-variants" hidden></div>
-    </li>
-
-    <!-- end sample content -->
-  </ol>
-
-  <button class="wc-add" type="button" data-action="add-piece">
-    <svg class="wc-icon" aria-hidden="true"><use href="#icon-add"></use></svg>
-    Add piece
-  </button>
+  <div class="wc-addwrap">
+    <button class="wc-add" type="button" data-action="add-piece" aria-haspopup="true" aria-expanded="false">
+      <svg class="wc-icon" aria-hidden="true"><use href="#icon-add"></use></svg>
+      Add piece
+    </button>
+    <div class="wc-addmenu" data-role="add-menu" hidden>
+      <button class="wc-addmenu__item" type="button" data-action="add-piece-kind" data-kind="header">Header</button>
+      <button class="wc-addmenu__item" type="button" data-action="add-piece-kind" data-kind="footer">Footer</button>
+      <button class="wc-addmenu__item" type="button" data-action="add-piece-kind" data-kind="text">Text</button>
+    </div>
+  </div>
 </main>
 
 <div class="wc-actionbar">
@@ -234,25 +140,7 @@
         <svg class="wc-icon" aria-hidden="true"><use href="#icon-close"></use></svg>
       </button>
     </div>
-    <ul class="wc-stacklist" data-role="stack-list">
-      <!-- sample content: remove in W2A -->
-      <li class="wc-stackrow" data-id="stk_sample0001" data-accent="green" data-active="true">
-        <span class="wc-stackrow__dot" aria-hidden="true"></span>
-        <span class="wc-stackrow__name" data-role="stack-row-name">My first stack</span>
-        <svg class="wc-icon wc-stackrow__check" data-role="active-mark" aria-hidden="true"><use href="#icon-check"></use></svg>
-      </li>
-      <li class="wc-stackrow" data-id="stk_sample0002" data-accent="blue" data-active="false">
-        <span class="wc-stackrow__dot" aria-hidden="true"></span>
-        <span class="wc-stackrow__name" data-role="stack-row-name">Claude</span>
-        <svg class="wc-icon wc-stackrow__check" data-role="active-mark" aria-hidden="true"><use href="#icon-check"></use></svg>
-      </li>
-      <li class="wc-stackrow" data-id="stk_sample0003" data-accent="pink" data-active="false">
-        <span class="wc-stackrow__dot" aria-hidden="true"></span>
-        <span class="wc-stackrow__name" data-role="stack-row-name">Instagram</span>
-        <svg class="wc-icon wc-stackrow__check" data-role="active-mark" aria-hidden="true"><use href="#icon-check"></use></svg>
-      </li>
-      <!-- end sample content -->
-    </ul>
+    <ul class="wc-stacklist" data-role="stack-list"></ul>
     <button class="wc-btn wc-btn--block" type="button" data-action="new-stack">
       <svg class="wc-icon" aria-hidden="true"><use href="#icon-add"></use></svg>
       New stack
@@ -354,7 +242,7 @@
   <li class="wc-piece" data-id="" data-kind="" data-enabled="true">
     <div class="wc-piece__bar">
       <label class="wc-switch">
-        <input type="checkbox" checked aria-label="Enabled" />
+        <input type="checkbox" data-role="enabled" checked aria-label="Enabled" />
         <span class="wc-switch__track"><span class="wc-switch__thumb"></span></span>
       </label>
       <button class="wc-piece__label" type="button" data-action="toggle-variants" aria-expanded="false">
@@ -386,15 +274,15 @@
   <li class="wc-piece wc-piece--clipboard" data-id="" data-kind="clipboard" data-enabled="true">
     <div class="wc-piece__bar">
       <label class="wc-switch">
-        <input type="checkbox" checked aria-label="Enabled" />
+        <input type="checkbox" data-role="enabled" checked aria-label="Enabled" />
         <span class="wc-switch__track"><span class="wc-switch__thumb"></span></span>
       </label>
       <span class="wc-piece__label wc-piece__label--static">
         <span class="wc-kind">Clipboard</span>
       </span>
-      <button class="wc-iconbtn" type="button" data-action="delete-piece" aria-label="Delete">
-        <svg class="wc-icon" aria-hidden="true"><use href="#icon-delete"></use></svg>
-      </button>
+      <!-- No delete control: a stack always keeps exactly one clipboard
+           piece (schema.js validateState enforces this); it can only be
+           toggled off, never removed. -->
       <button class="wc-handle" type="button" aria-label="Drag to reorder" tabindex="0">
         <svg class="wc-icon" aria-hidden="true"><use href="#icon-drag"></use></svg>
       </button>
