@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<title>w/copy clipboard probe</title>
+<link rel="stylesheet" href="css/probe.css">
+</head>
+<body>
+<header class="probe-header">
+  <h1>w/copy clipboard probe</h1>
+  <p>Temporary diagnostic page. Run every experiment on this device, then use
+  “Copy results” and paste the report back into chat. Removed before launch.</p>
+</header>
+
+<section class="probe-env" aria-label="Environment">
+  <dl>
+    <div>
+      <dt>User agent</dt>
+      <dd data-role="ua">—</dd>
+    </div>
+    <div>
+      <dt>Standalone (installed PWA)</dt>
+      <dd data-role="standalone">—</dd>
+    </div>
+    <div>
+      <dt>Secure context</dt>
+      <dd data-role="secure-context">—</dd>
+    </div>
+  </dl>
+</section>
+
+<main class="probe-list">
+
+  <section class="probe-case" data-case="write-alone">
+    <h2>1. writeText alone</h2>
+    <p>Writes a fixed string directly to the clipboard.</p>
+    <button type="button" data-action="run" data-case="write-alone">Run writeText</button>
+    <p class="probe-result" data-result="write-alone">Not run yet.</p>
+  </section>
+
+  <section class="probe-case" data-case="read-alone">
+    <h2>2. readText alone</h2>
+    <p>Reads whatever is currently on the clipboard and shows it.</p>
+    <button type="button" data-action="run" data-case="read-alone">Run readText</button>
+    <p class="probe-result" data-result="read-alone">Not run yet.</p>
+  </section>
+
+  <section class="probe-case" data-case="read-then-write">
+    <h2>3. await readText, then await writeText</h2>
+    <p>The desktop-Chrome-shaped sequence: read, transform, write, all
+    awaited in order.</p>
+    <button type="button" data-action="run" data-case="read-then-write">Run sequence</button>
+    <p class="probe-result" data-result="read-then-write">Not run yet.</p>
+  </section>
+
+  <section class="probe-case" data-case="write-deferred">
+    <h2>4. writeDeferred(readText().then(transform))</h2>
+    <p>The WebKit-shaped sequence: <code>navigator.clipboard.write</code> is
+    called synchronously with a promise for the transformed text.</p>
+    <button type="button" data-action="run" data-case="write-deferred">Run writeDeferred</button>
+    <p class="probe-result" data-result="write-deferred">Not run yet.</p>
+  </section>
+
+  <section class="probe-case" data-case="paste-event">
+    <h2>5. Paste-event path</h2>
+    <p>Focus the box below, then paste (⌘V / Ctrl+V) directly into it. The
+    <code>paste</code> event itself supplies the text and the gesture for the
+    write, so no clipboard-read permission is involved.</p>
+    <textarea data-role="paste-target" rows="2" placeholder="Focus here, then paste"></textarea>
+    <p class="probe-result" data-result="paste-event">Not run yet.</p>
+  </section>
+
+  <section class="probe-case" data-case="installed">
+    <h2>6. Repeat #3 and #4 as an installed PWA</h2>
+    <p>Install this page to the home screen (Share → Add to Home Screen on
+    iPhone), open it from the home screen icon, and run experiments 3 and 4
+    again. The “Standalone” value above should read “yes” when you do.</p>
+  </section>
+
+</main>
+
+<section class="probe-report" aria-label="Report">
+  <h2>Report</h2>
+  <textarea data-role="report" readonly rows="12"></textarea>
+  <button type="button" data-action="copy-results">Copy results</button>
+  <p class="probe-result" data-result="copy-results">Not run yet.</p>
+</section>
+
+<script type="module" src="js/probe.js"></script>
+</body>
+</html>
