@@ -768,7 +768,8 @@ dialog {
 
 .wc-settings,
 .wc-expand,
-.wc-paste {
+.wc-paste,
+.wc-qr {
   padding: 0;
   border: none;
   border-radius: var(--radius-lg);
@@ -781,7 +782,8 @@ dialog {
 @starting-style {
   .wc-settings[open],
   .wc-expand[open],
-  .wc-paste[open] {
+  .wc-paste[open],
+  .wc-qr[open] {
     opacity: 0;
     transform: scale(0.96) translateY(10px);
   }
@@ -789,7 +791,8 @@ dialog {
 
 .wc-settings::backdrop,
 .wc-expand::backdrop,
-.wc-paste::backdrop {
+.wc-paste::backdrop,
+.wc-qr::backdrop {
   background: var(--backdrop);
   opacity: 1;
   transition: opacity var(--dur) var(--ease);
@@ -798,7 +801,8 @@ dialog {
 @starting-style {
   .wc-settings[open]::backdrop,
   .wc-expand[open]::backdrop,
-  .wc-paste[open]::backdrop {
+  .wc-paste[open]::backdrop,
+  .wc-qr[open]::backdrop {
     opacity: 0;
   }
 }
@@ -1297,5 +1301,59 @@ dialog {
   overflow: hidden;
   clip: rect(0 0 0 0);
   white-space: nowrap;
+}
+
+/* ==========================================================================
+   Added in W3B: share link and QR (settings.js "Share this stack" row and
+   the dedicated QR dialog). The disabled-button rule from W2B, above, now
+   applies to nothing — the share/QR buttons lost their `disabled` attribute
+   — but is left in place as a plain :disabled selector, harmless if another
+   button ever needs it.
+   ========================================================================== */
+
+/* A dedicated dialog, not nested in Settings: showModal() dialogs render in
+   the browser's top layer, so opening one from inside another isn't
+   possible anyway — settings.js closes Settings before opening this one
+   (see its closeSettingsDialog/closeQrDialog comments). Sized like
+   .wc-paste__inner (a plain content wrapper; the <dialog> itself only
+   carries the shared reset above, matching every other dialog here). */
+.wc-qr__inner {
+  display: flex;
+  flex-direction: column;
+  width: min(360px, 92vw);
+  max-height: 85vh;
+}
+
+.wc-qr__body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  overflow-y: auto;
+}
+
+/* The QR itself needs a true white quiet zone to scan reliably regardless
+   of the app's theme — canvas pixels are drawn white/black directly by
+   qr.js's drawQR, so this just keeps the card around it white too, with no
+   dark-mode override. */
+.wc-qr__canvas {
+  width: 100%;
+  max-width: 260px;
+  height: auto;
+  border-radius: var(--radius-sm);
+  background: #ffffff;
+}
+
+.wc-qr__url {
+  margin: 0;
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-size: var(--fs-xs);
+  word-break: break-all;
+  text-align: center;
 }
 

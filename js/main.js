@@ -48,10 +48,15 @@ import {
   initVersion,
   setTheme,
   setDensity,
+  copyShareLink,
+  showQr,
+  copyQrLink,
   copyExportJson,
   downloadExportJson,
   applyImportText,
 } from './ui/settings.js';
+import { decodeStack, parseShareFragment } from './link.js';
+import { newId } from './schema.js';
 
 // ---------------------------------------------------------------------------
 // Store + root render
@@ -100,6 +105,87 @@ render(store.get());
 if (corrupted) {
   showToast({ message: "Saved data couldn't be read. Started fresh.", tone: 'error' });
 }
+
+// ---------------------------------------------------------------------------
+// Share-link import on load (spec §4.5 last paragraph)
+// ---------------------------------------------------------------------------
+
+/**
+ * Assigns fresh ids to an imported stack and everything inside it — its own
+ * id, every piece's id, and every non-clipboard piece's variant ids and
+ * `activeVariantId` — so an imported stack can never collide with (or
+ * overwrite) anything already in this device's state. `decodeStack` already
+ * validated the shape; this only ever touches ids.
+ */
+function reidStack(original) {
+  const stack = structuredClone(original);
+  stack.id = newId('stk');
+  for (const piece of stack.pieces) {
+    const oldActiveVariantId = piece.activeVariantId;
+    piece.id = newId('pc');
+    if (Array.isArray(piece.variants)) {
+      for (const variant of piece.variants) {
+        const oldVariantId = variant.id;
+        variant.id = newId('var');
+        if (oldVariantId === oldActiveVariantId) piece.activeVariantId = variant.id;
+      }
+    }
+  }
+  return stack;
+}
+
+/**
+ * If the URL carries a `#s=...` share fragment, decodes it, re-ids it,
+ * appends it to the stack list, makes it active, and toasts "Imported
+ * "Name"." with Undo (spec §7.5: success tone, unlike the info-toned
+ * `undoable` helper — called via `showToast` directly for that reason).
+ * The fragment is cleared with `history.replaceState` either way, so a
+ * refresh never re-imports and a failed decode doesn't linger in the URL.
+ * Runs once, at load.
+ */
+async function importFromShareFragment() {
+  const encoded = parseShareFragment(location.hash);
+  if (!encoded) return;
+
+  const clearFragment = () => {
+    history.replaceState(null, '', location.pathname + location.search);
+  };
+
+  let decoded;
+  try {
+    decoded = await decodeStack(encoded);
+  } catch {
+    clearFragment();
+    ctx.toast({ message: "That link didn't contain a valid stack.", tone: 'error' });
+    return;
+  }
+
+  const imported = reidStack(decoded);
+  const previousActiveId = store.get().activeStackId;
+  ctx.store.commit((state) => {
+    state.stacks.push(imported);
+    state.activeStackId = imported.id;
+  });
+  clearFragment();
+
+  ctx.toast({
+    message: `Imported "${imported.name}".`,
+    tone: 'success',
+    duration: 6000,
+    action: {
+      label: 'Undo',
+      onClick: () => {
+        ctx.store.commit((state) => {
+          const idx = state.stacks.findIndex((s) => s.id === imported.id);
+          if (idx !== -1) state.stacks.splice(idx, 1);
+          state.activeStackId = previousActiveId;
+        });
+      },
+    },
+  });
+}
+
+importFromShareFragment();
 
 // ---------------------------------------------------------------------------
 // Panel / add-piece menu (structural chrome, not app state)
@@ -417,9 +503,20 @@ document.addEventListener('click', (event) => {
       if (textarea) applyImportText(textarea.value, ctx);
       break;
     }
-    // 'copy-share-link' and 'show-qr' are disabled buttons (tooltip "Coming
-    // next") until the share-link task; disabled buttons never fire click,
-    // so no case is needed for them.
+    case 'copy-share-link':
+      copyShareLink(ctx);
+      break;
+    case 'show-qr':
+      showQr(ctx);
+      break;
+    case 'copy-qr-link':
+      copyQrLink(ctx);
+      break;
+    case 'close-qr': {
+      const dialog = document.querySelector('[data-role="qr"]');
+      if (dialog) dialog.close();
+      break;
+    }
     default:
       break;
   }

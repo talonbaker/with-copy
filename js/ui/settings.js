@@ -1,17 +1,24 @@
-// ui/settings.js — the settings dialog: appearance, export/import, about
-// (spec §7.4). See docs/tasks/w2b-stacks-and-settings.md.
+// ui/settings.js — the settings dialog: appearance, share link/QR,
+// export/import, about (spec §7.4). See docs/tasks/w2b-stacks-and-settings.md
+// and docs/tasks/w3b-share-link-qr.md.
 //
 // `renderSettings` syncs the theme/density radios to the current state on
 // every store commit, exactly like side-panel.js's `renderStackList` — it's
 // called from main.js's root `render(state)` (spec §5: "updates the header
-// ... side panel, and settings"). The rest of this module is import/export
-// logic invoked directly from main.js's delegated handlers.
+// ... side panel, and settings"). The rest of this module is share/export/
+// import logic invoked directly from main.js's delegated handlers.
 
 import { migrate, validateState } from '../schema.js';
 import { writeText } from '../clipboard.js';
+import { encodeStack, buildShareUrl } from '../link.js';
+import { drawQR } from '../qr.js';
 
 function dialogEl() {
   return document.querySelector('[data-role="settings"]');
+}
+
+function qrDialogEl() {
+  return document.querySelector('[data-role="qr"]');
 }
 
 // A <dialog> shown with showModal() renders in the browser's top layer, which
@@ -25,6 +32,13 @@ function dialogEl() {
 // that same close-then-toast order.
 function closeSettingsDialog() {
   const dialog = dialogEl();
+  if (dialog && dialog.open) dialog.close();
+}
+
+// Same reasoning as closeSettingsDialog: the QR dialog is a <dialog> shown
+// with showModal(), so its own Copy button must close it before toasting.
+function closeQrDialog() {
+  const dialog = qrDialogEl();
   if (dialog && dialog.open) dialog.close();
 }
 
@@ -89,6 +103,75 @@ export function initVersion() {
   resolveVersion().then((version) => {
     versionEl.textContent = `v${version}`;
   });
+}
+
+// ---------------------------------------------------------------------------
+// Share this stack (spec §4.5, §7.4): a link carrying the active stack,
+// compressed and base64url-encoded by link.js, that another device can open
+// to import it — no server involved. "Copy link" writes it straight to the
+// clipboard; "Show QR" renders the same URL into a dedicated dialog (its
+// own <dialog>, not nested in the settings one, per the same top-layer
+// reasoning as closeSettingsDialog above) for a phone camera to scan.
+// ---------------------------------------------------------------------------
+
+/** The active stack's share URL: `encodeStack` + `buildShareUrl` (spec §4.5). */
+async function shareUrlForActiveStack(ctx) {
+  const stack = ctx.getActiveStack(ctx.store.get());
+  const encoded = await encodeStack(stack);
+  return buildShareUrl(encoded);
+}
+
+/** "Copy link" → clipboard.writeText the share URL, toasting "Link copied". */
+export async function copyShareLink(ctx) {
+  try {
+    const url = await shareUrlForActiveStack(ctx);
+    await writeText(url);
+    closeSettingsDialog();
+    ctx.toast({ message: 'Link copied', tone: 'success' });
+  } catch {
+    closeSettingsDialog();
+    ctx.toast({ message: "Couldn't copy. Try again.", tone: 'error' });
+  }
+}
+
+// Stashed by showQr so copyQrLink (a separate user gesture, inside the QR
+// dialog) doesn't need to re-derive or re-await the share URL.
+let qrDialogUrl = null;
+
+/** "Show QR" → close Settings, draw the share URL into the QR dialog, open it. */
+export async function showQr(ctx) {
+  let url;
+  try {
+    url = await shareUrlForActiveStack(ctx);
+  } catch {
+    closeSettingsDialog();
+    ctx.toast({ message: "Couldn't create the QR code. Try again.", tone: 'error' });
+    return;
+  }
+
+  closeSettingsDialog();
+  const dialog = qrDialogEl();
+  if (!dialog) return;
+
+  const canvas = dialog.querySelector('[data-role="qr-canvas"]');
+  const urlEl = dialog.querySelector('[data-role="qr-url"]');
+  if (canvas) drawQR(canvas, url, { scale: 6, margin: 2 });
+  if (urlEl) urlEl.textContent = url;
+  qrDialogUrl = url;
+  dialog.showModal();
+}
+
+/** The QR dialog's own "Copy link" → same clipboard write, closing that dialog first. */
+export async function copyQrLink(ctx) {
+  if (!qrDialogUrl) return;
+  try {
+    await writeText(qrDialogUrl);
+    closeQrDialog();
+    ctx.toast({ message: 'Link copied', tone: 'success' });
+  } catch {
+    closeQrDialog();
+    ctx.toast({ message: "Couldn't copy. Try again.", tone: 'error' });
+  }
 }
 
 // ---------------------------------------------------------------------------

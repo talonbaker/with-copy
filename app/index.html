@@ -178,11 +178,11 @@
         <div class="wc-settings__row">
           <span>Share this stack</span>
           <div class="wc-settings__row-actions">
-            <button class="wc-btn" type="button" data-action="copy-share-link" disabled title="Coming next">
+            <button class="wc-btn" type="button" data-action="copy-share-link">
               <svg class="wc-icon" aria-hidden="true"><use href="#icon-link"></use></svg>
               Copy link
             </button>
-            <button class="wc-btn" type="button" data-action="show-qr" disabled title="Coming next">
+            <button class="wc-btn" type="button" data-action="show-qr">
               <svg class="wc-icon" aria-hidden="true"><use href="#icon-qr"></use></svg>
               Show QR
             </button>
@@ -212,6 +212,25 @@
       </section>
     </div>
   </form>
+</dialog>
+
+<dialog class="wc-qr" data-role="qr">
+  <div class="wc-qr__inner">
+    <div class="wc-dialog__header">
+      <h2>Scan to import</h2>
+      <button class="wc-iconbtn" type="button" data-action="close-qr" aria-label="Close">
+        <svg class="wc-icon" aria-hidden="true"><use href="#icon-close"></use></svg>
+      </button>
+    </div>
+    <div class="wc-qr__body">
+      <canvas class="wc-qr__canvas" data-role="qr-canvas" role="img" aria-label="QR code linking to this stack"></canvas>
+      <p class="wc-qr__url" data-role="qr-url"></p>
+      <button class="wc-btn wc-btn--block" type="button" data-action="copy-qr-link">
+        <svg class="wc-icon" aria-hidden="true"><use href="#icon-link"></use></svg>
+        Copy link
+      </button>
+    </div>
+  </div>
 </dialog>
 
 <dialog class="wc-expand" data-role="expand">

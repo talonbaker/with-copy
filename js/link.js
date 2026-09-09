@@ -158,10 +158,12 @@ export async function decodeStack(str) {
  * Builds the full share URL for an already-encoded stack string. Takes the
  * `encoded` string and an `origin` (defaulting to `location.origin`, so
  * callers running outside a browser, such as tests, should pass one
- * explicitly) and returns `` `${origin}/#s=${encoded}` ``. Never throws.
+ * explicitly) and returns `` `${origin}/app/#s=${encoded}` `` (spec §4.5) —
+ * the fragment has to land on `/app/` itself, not the root landing page,
+ * since only `/app/` runs the code that reads it on load. Never throws.
  */
 export function buildShareUrl(encoded, origin = location.origin) {
-  return `${origin}/#s=${encoded}`;
+  return `${origin}/app/#s=${encoded}`;
 }
 
 /**

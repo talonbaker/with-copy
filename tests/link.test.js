@@ -80,9 +80,9 @@ describe('encodeStack / decodeStack', () => {
 });
 
 describe('buildShareUrl', () => {
-  test('builds a fragment URL with the s= param', () => {
+  test('builds a fragment URL under /app/ with the s= param', () => {
     const url = buildShareUrl('abc123', 'https://withcopy.app');
-    assert.equal(url, 'https://withcopy.app/#s=abc123');
+    assert.equal(url, 'https://withcopy.app/app/#s=abc123');
   });
 });
 
