@@ -588,7 +588,12 @@ a:focus-visible,
   bottom: 0;
   z-index: var(--z-actionbar);
   display: flex;
-  justify-content: center;
+  /* Column, not row: W5 adds an optional hint line under the button (see the
+     W5 section below), so this bar stacks its (one or two) children and
+     centers them horizontally instead of centering a single row. */
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
   padding: var(--space-3) var(--space-4) calc(var(--space-3) + env(safe-area-inset-bottom));
   background: linear-gradient(to top, var(--bg) 60%, transparent);
 }
@@ -596,6 +601,10 @@ a:focus-visible,
 .wc-action {
   width: 100%;
   max-width: 640px;
+  /* Was a <button>; is a contenteditable <div> as of W5 (see below), which
+     doesn't center text by default the way a button does. */
+  display: block;
+  text-align: center;
   padding: var(--space-4);
   border: none;
   border-radius: var(--radius-lg);
@@ -1354,6 +1363,50 @@ dialog {
   color: var(--text-muted);
   font-size: var(--fs-xs);
   word-break: break-all;
+  text-align: center;
+}
+
+/* ==========================================================================
+   Added in W5: clipboard streamline. The action button (.wc-action, above)
+   became a contenteditable <div> so it can double as a paste target on
+   devices that can't read the clipboard (spec §4.4/§6) — see main.js's
+   handleActionPaste and updateActionUI. The rules below keep it looking and
+   behaving like a plain button rather than a text field: no visible
+   selection/callout chrome of ours, no accidental scroll, same look in both
+   the "w/copy" and "Paste to w/copy" states. The browser's own native Paste
+   callout/edit-menu is out of CSS's reach entirely — that part is system UI.
+   ========================================================================== */
+
+.wc-action {
+  /* Selection has to stay on (it's what lets the platform offer its native
+     paste/edit menu at all — `-webkit-touch-callout` is deliberately left
+     at its default for the same reason: on iOS it can suppress that exact
+     menu, not just the long-press callout its name suggests). This only
+     drops the default mobile tap-highlight flash, so nothing suggests a
+     text field was touched instead of a button. */
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-tap-highlight-color: transparent;
+  /* A contenteditable can grow a scrollbar or wrap oddly if its content
+     somehow exceeded one line; it never should (see main.js: every paste is
+     read from event.clipboardData and never actually inserted, and the
+     label is always one short phrase), but this keeps a stray value from
+     ever changing the button's height. */
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* Small, non-toast line under the button (design point 2's "say so on the
+   button... a small secondary line") for the one thing CSS/JS can't detect:
+   whether a single tap reliably offers the native Paste menu on this device,
+   or whether it needs a deliberate long-press. Shown only in paste strategy
+   with the clipboard piece enabled — updateActionUI toggles [hidden]. */
+.wc-action__hint {
+  margin: 0;
+  padding: 0 var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--fs-xs);
   text-align: center;
 }
 

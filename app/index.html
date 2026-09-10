@@ -130,7 +130,27 @@
 </main>
 
 <div class="wc-actionbar">
-  <button class="wc-action" type="button" data-action="wcopy">w/copy</button>
+  <!-- The action control doubles as a paste target on devices that can't
+       read the clipboard (W5, spec §4.4/§6): contenteditable so a native
+       paste can land on it, inputmode="none" to keep the software keyboard
+       down (iOS 16+), the rest tuned so it never behaves like a real text
+       field. main.js's updateActionUI swaps the label between "w/copy" and
+       "Paste to w/copy" and toggles the hint below; nothing here is ever
+       set via innerHTML. -->
+  <div
+    class="wc-action"
+    data-action="wcopy"
+    role="button"
+    tabindex="0"
+    contenteditable="true"
+    inputmode="none"
+    enterkeyhint="done"
+    autocapitalize="off"
+    autocorrect="off"
+    spellcheck="false"
+    aria-label="w/copy"
+  >w/copy</div>
+  <p class="wc-action__hint" data-role="action-hint" hidden>If Paste doesn't pop up, try a long‑press.</p>
 </div>
 
 <aside class="wc-panel" data-role="panel" hidden>
