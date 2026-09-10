@@ -42,7 +42,7 @@ function closeQrDialog() {
   if (dialog && dialog.open) dialog.close();
 }
 
-/** Syncs the theme/density radio groups to `state.settings`. */
+/** Syncs the theme/density radio groups and the W7 preview switch to `state.settings`. */
 export function renderSettings(state, ctx) {
   const dialog = dialogEl();
   if (!dialog) return;
@@ -54,6 +54,8 @@ export function renderSettings(state, ctx) {
     `[data-role="density"] input[value="${CSS.escape(state.settings.density)}"]`,
   );
   if (densityInput) densityInput.checked = true;
+  const showClipboardInput = dialog.querySelector('[data-role="show-clipboard"]');
+  if (showClipboardInput) showClipboardInput.checked = Boolean(state.settings.showClipboard);
 }
 
 /** Theme radio change → commit, applied immediately by main.js's applyRootAttributes. */
@@ -67,6 +69,19 @@ export function setTheme(theme, ctx) {
 export function setDensity(density, ctx) {
   ctx.store.commit((state) => {
     state.settings.density = density;
+  });
+}
+
+/**
+ * The Settings dialog's "Show clipboard preview" switch (W7) → commit, the
+ * same `settings.showClipboard` preference the clipboard card's own eye
+ * toggle writes (see `js/ui/piece-card.js`'s `toggleClipboardPreviewPref`),
+ * so either surface changing it is reflected in the other on the very next
+ * render.
+ */
+export function setShowClipboard(showClipboard, ctx) {
+  ctx.store.commit((state) => {
+    state.settings.showClipboard = showClipboard;
   });
 }
 

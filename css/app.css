@@ -438,6 +438,14 @@ a:focus-visible,
   text-align: center;
 }
 
+/* W7: hidden while the opt-in preview is on (piece-card.js's
+   `fillClipboardPreview` toggles this). Needed explicitly, same reasoning
+   as `.wc-variants[hidden]` above: an author rule's `display` always beats
+   the UA stylesheet's `[hidden] { display: none }`. */
+.wc-clipboard-slot[hidden] {
+  display: none;
+}
+
 .wc-clipboard-slot__icon {
   width: 28px;
   height: 28px;
@@ -1606,5 +1614,178 @@ dialog {
   color: var(--text-muted);
   font-size: var(--fs-xs);
   text-align: center;
+}
+
+/* ==========================================================================
+   Added in W7: opt-in clipboard preview (docs/tasks/w7-clipboard-preview.md)
+
+   Off by default: `.wc-clippreview` stays `[hidden]` and the classic
+   `.wc-clipboard-slot` above (unchanged since before this task) is all that
+   shows — no residual controls, no layout shift, per the task's design
+   section. When on, piece-card.js's `fillClipboardPreview` shows exactly
+   one of three sibling blocks inside `.wc-clippreview` (placeholder /
+   empty message / body+meta) plus the shared control at the bottom, which
+   is a `contenteditable` paste target exactly like `.wc-action` (W5) for
+   the same reason: a device that can't read the clipboard can still only
+   get it from a native paste landing directly on this control.
+
+   The truncated text's soft fade (mask-image, `data-truncated="true"`) is
+   a purely static effect, not an animation — nothing here needs the
+   `prefers-reduced-motion` guard tokens.css already zeroes `--dur*` under.
+   The expanded text's own scroll region (`data-expanded="true"`, a capped
+   `max-height`) is what keeps a 50,000-character clipboard from ever
+   pushing the w/copy/i/copy buttons out of one-handed reach.
+   ========================================================================== */
+
+.wc-clippreview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  /* Horizontal inset already comes from `.wc-piece`'s own `--card-pad`
+     (the card's padding on every side) — this only adds vertical spacing
+     under the bar, the same convention `.wc-piece__text` and
+     `.wc-clipboard-slot` above already follow. */
+  margin-top: var(--space-2);
+}
+
+.wc-clippreview[hidden] {
+  display: none;
+}
+
+.wc-clippreview__placeholder {
+  display: flex;
+  justify-content: center;
+  padding: var(--space-4) 0;
+  color: var(--kind-clipboard);
+}
+
+.wc-clippreview__placeholder[hidden] {
+  display: none;
+}
+
+.wc-clippreview__placeholder .wc-icon {
+  width: 28px;
+  height: 28px;
+}
+
+.wc-clippreview__empty {
+  margin: 0;
+  padding: var(--space-4) 0;
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  text-align: center;
+}
+
+.wc-clippreview__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.wc-clippreview__body[hidden] {
+  display: none;
+}
+
+/* The preview text itself: a <pre> so line breaks and leading/trailing
+   whitespace render exactly as copied (design: "show leading and trailing
+   whitespace faithfully rather than collapsing it"), wrapped rather than
+   scrolled horizontally so a long unbroken line never widens the card. */
+.wc-clippreview__text {
+  margin: 0;
+  overflow: hidden;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: var(--font-ui);
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+  color: var(--text);
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+}
+
+/* Collapsed and actually cut off: a soft fade hints there's more below,
+   instead of an abrupt hard edge, without adding a scrollbar of its own. */
+.wc-clippreview__text[data-truncated="true"] {
+  -webkit-mask-image: linear-gradient(to bottom, #000 65%, transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 65%, transparent 100%);
+}
+
+/* Expanded: a bounded, scrollable region — never an infinite card. */
+.wc-clippreview__text[data-expanded="true"] {
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.wc-clippreview__more {
+  align-self: flex-start;
+  border: none;
+  background: transparent;
+  padding: var(--space-1) 0;
+  color: var(--accent);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.wc-clippreview__more:hover {
+  text-decoration: underline;
+}
+
+/* The quiet character-count + freshness line (design: "4,812 characters ·
+   checked just now", ageing to "2 minutes ago" — the honesty requirement
+   that this is a snapshot, not a live view, per D8). */
+.wc-clippreview__meta {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The shared "Show clipboard"/"Refresh" control — same contenteditable
+   paste-target shape as .wc-action (W5, see that section's comment above
+   for why user-select/tap-highlight/overflow are set this way), styled as
+   a quiet outline button rather than .wc-action's solid fill, since this
+   one is a secondary, repeatable check rather than the card's main action. */
+.wc-clippreview__control {
+  align-self: center;
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  cursor: pointer;
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-tap-highlight-color: transparent;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  max-width: 100%;
+  transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease),
+    transform var(--dur-fast) var(--ease);
+}
+
+.wc-clippreview__control:hover {
+  background: var(--surface-2);
+}
+
+.wc-clippreview__control:active {
+  transform: scale(0.98);
+}
+
+.wc-clippreview__control:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* The eye toggle in the clipboard card's bar: accent-tinted while the
+   preview is on, otherwise a plain muted icon button like every other
+   .wc-iconbtn — no layout change either way, only color. */
+.wc-piece--clipboard [data-action="toggle-clipboard-preview"][aria-pressed="true"] {
+  color: var(--accent);
 }
 

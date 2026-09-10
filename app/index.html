@@ -104,6 +104,15 @@
     <path d="M3.5 12l8.5 4.5 8.5-4.5" />
     <path d="M3.5 15.8l8.5 4.5 8.5-4.5" />
   </symbol>
+  <symbol id="icon-eye" viewBox="0 0 24 24">
+    <path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z" />
+    <circle cx="12" cy="12" r="3" />
+  </symbol>
+  <symbol id="icon-eye-off" viewBox="0 0 24 24">
+    <path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z" />
+    <circle cx="12" cy="12" r="3" />
+    <line x1="4" y1="20" x2="20" y2="4" />
+  </symbol>
 </svg>
 
 <header class="wc-topbar">
@@ -236,6 +245,16 @@
           <label><input type="radio" name="density" value="comfortable" checked /> Comfortable</label>
           <label><input type="radio" name="density" value="compact" /> Compact</label>
         </fieldset>
+        <!-- W7: mirrors the clipboard card's eye toggle — same single
+             settings.showClipboard preference, findable here too. Off by
+             default (docs/tasks/w7-clipboard-preview.md). -->
+        <div class="wc-settings__row">
+          <span>Show clipboard preview</span>
+          <label class="wc-switch">
+            <input type="checkbox" data-role="show-clipboard" aria-label="Show clipboard preview" />
+            <span class="wc-switch__track"><span class="wc-switch__thumb"></span></span>
+          </label>
+        </div>
       </section>
       <section class="wc-settings__section">
         <h3>Stacks</h3>
@@ -366,6 +385,21 @@
       <span class="wc-piece__label wc-piece__label--static">
         <span class="wc-kind">Clipboard</span>
       </span>
+      <!-- W7: opt-in preview toggle (docs/tasks/w7-clipboard-preview.md).
+           Off by default; writes the single global settings.showClipboard
+           preference, so it's the same choice wherever a clipboard slot
+           appears (also mirrored as a row in Settings > Appearance).
+           piece-card.js swaps the icon's href and the aria attributes;
+           nothing here is ever set via innerHTML. -->
+      <button
+        class="wc-iconbtn"
+        type="button"
+        data-action="toggle-clipboard-preview"
+        aria-pressed="false"
+        aria-label="Show clipboard preview"
+      >
+        <svg class="wc-icon" aria-hidden="true"><use href="#icon-eye-off"></use></svg>
+      </button>
       <!-- No delete control: a stack always keeps exactly one clipboard
            piece (schema.js validateState enforces this); it can only be
            toggled off, never removed. -->
@@ -373,9 +407,52 @@
         <svg class="wc-icon" aria-hidden="true"><use href="#icon-drag"></use></svg>
       </button>
     </div>
-    <div class="wc-clipboard-slot">
+    <div class="wc-clipboard-slot" data-role="clipboard-placeholder">
       <svg class="wc-icon wc-clipboard-slot__icon" aria-hidden="true"><use href="#icon-clipboard"></use></svg>
       <p class="wc-clipboard-slot__caption">Your clipboard goes here</p>
+    </div>
+    <!-- W7: the opt-in preview (docs/tasks/w7-clipboard-preview.md). Hidden
+         entirely unless settings.showClipboard is on, in which case
+         piece-card.js's fillClipboardPreview shows exactly one of: the
+         placeholder icon (nothing read yet this session, or this device
+         needs a paste), the empty-clipboard message, or the truncated/
+         expanded preview text with its character count and freshness line.
+         The preview text is read from `event.clipboardData`/`readText()`
+         and held in memory only (main.js) — never localStorage, never
+         export, never the share link — and is always set with
+         `textContent`, never `innerHTML`. The control below doubles as a
+         native paste target on a device that can't read the clipboard
+         directly, exactly like the w/copy/i/copy controls (W5): see
+         main.js's handleClipboardPreviewPaste. -->
+    <div class="wc-clippreview" data-role="clipboard-preview" hidden>
+      <div class="wc-clippreview__placeholder" data-role="clipboard-preview-placeholder">
+        <svg class="wc-icon wc-clipboard-slot__icon" aria-hidden="true"><use href="#icon-clipboard"></use></svg>
+      </div>
+      <p class="wc-clippreview__empty" data-role="clipboard-preview-empty" hidden>Your clipboard is empty.</p>
+      <div class="wc-clippreview__body" data-role="clipboard-preview-body" hidden>
+        <pre class="wc-clippreview__text" data-role="clipboard-preview-text"></pre>
+        <button
+          class="wc-clippreview__more"
+          type="button"
+          data-action="clipboard-preview-expand"
+          aria-expanded="false"
+          hidden
+        >Show more</button>
+        <p class="wc-clippreview__meta" data-role="clipboard-preview-meta"></p>
+      </div>
+      <div
+        class="wc-clippreview__control"
+        data-action="clipboard-preview-action"
+        role="button"
+        tabindex="0"
+        contenteditable="true"
+        inputmode="none"
+        enterkeyhint="done"
+        autocapitalize="off"
+        autocorrect="off"
+        spellcheck="false"
+        aria-label="Show clipboard"
+      >Show clipboard</div>
     </div>
   </li>
 </template>

@@ -33,6 +33,9 @@ import {
   deletePiece,
   addPiece,
   autoGrow,
+  toggleClipboardPreviewPref,
+  toggleClipboardPreviewExpanded,
+  updateClipboardPreview,
 } from './ui/piece-card.js';
 import {
   selectVariant,
@@ -57,6 +60,7 @@ import {
   initVersion,
   setTheme,
   setDensity,
+  setShowClipboard,
   copyShareLink,
   showQr,
   copyQrLink,
@@ -83,6 +87,16 @@ const ctx = {
   toast: showToast,
   undoable,
   getActiveStack,
+  // W7: the opt-in clipboard preview's read side (docs/tasks/
+  // w7-clipboard-preview.md). A function, not a plain field, so
+  // piece-card.js always sees the current `clipboardPreview`/
+  // `clipboardStrategy` — both declared further down this file and updated
+  // in place — rather than a value snapshotted once when `ctx` was built.
+  getClipboardPreview: () => ({
+    text: clipboardPreview.text,
+    checkedAt: clipboardPreview.checkedAt,
+    attemptRead: nextClipboardStrategy({ storedStrategy: clipboardStrategy, readOutcome: null }).attemptRead,
+  }),
 };
 
 // ---------------------------------------------------------------------------
@@ -94,6 +108,59 @@ const ctx = {
 // ---------------------------------------------------------------------------
 
 let pileState = loadPile();
+
+// ---------------------------------------------------------------------------
+// W7: the opt-in clipboard preview (docs/tasks/w7-clipboard-preview.md) —
+// the exact same shape of state as `pileState` above, for the exact same
+// reason: this is a transient, session-only snapshot of the last clipboard
+// text actually obtained, not application state, so it never runs through
+// `store` (no schema validation, no persistence, no export, no share link
+// — the task's hard rule 2: clipboard content lives in memory only). `text`
+// is `null` until something has been read or pasted this session; after
+// that it is the exact string obtained, including `''` for a genuinely
+// empty clipboard (its own honestly-labelled state — see piece-card.js's
+// `fillClipboardPreview`). `checkedAt` is that read's `Date.now()`, used
+// only to render the honest "checked N ago" wording
+// (clipboard-preview.js's `formatCheckedAgo`) — never written anywhere.
+let clipboardPreview = { text: null, checkedAt: null };
+
+/**
+ * Records a clipboard text this session actually obtained — via the
+ * preview's own control, or "for free" whenever w/copy/i/copy succeed (see
+ * `runWCopy`/`runICopy`/`handleActionPaste` below) — and refreshes whatever
+ * clipboard piece card is currently on screen to show it. In-memory only:
+ * this never calls into `store` or `localStorage`, per the task's rule 2.
+ */
+function setClipboardPreviewText(text) {
+  clipboardPreview = { text, checkedAt: Date.now() };
+  refreshClipboardPreviewUI();
+}
+
+/**
+ * Re-fills the currently-mounted clipboard piece card's preview content and
+ * control label from the current `clipboardPreview`/`clipboardStrategy`,
+ * without a store commit and without rebuilding any other card — the same
+ * "targeted refresh" shape `renderPileStrip` uses for the pile. Called
+ * after a successful read/paste, after a silent strategy demotion, and on
+ * the freshness-label tick below. A no-op if no clipboard piece card is
+ * currently rendered (e.g. its stack's clipboard piece was somehow removed
+ * mid-flight, or the preview is off and nothing needs updating).
+ */
+function refreshClipboardPreviewUI() {
+  const pieceEl = document.querySelector('.wc-piece[data-kind="clipboard"]');
+  updateClipboardPreview(pieceEl, ctx);
+}
+
+// Purely a display tick for the honest "checked N ago" wording aging from
+// "just now" to "2 minutes ago" and onward while a card is left open — D8 is
+// about clipboard READS, not about redrawing a label already computed from
+// data already held in memory. This never touches the clipboard and never
+// reads anything; it only recomputes text from `clipboardPreview.checkedAt`,
+// exactly like `refreshClipboardPreviewUI`'s other callers. A no-op tick
+// whenever nothing has been checked yet, or no clipboard card is mounted.
+setInterval(() => {
+  if (clipboardPreview.checkedAt !== null) refreshClipboardPreviewUI();
+}, 30_000);
 
 function applyRootAttributes(state) {
   const root = document.documentElement;
@@ -134,13 +201,37 @@ let clipboardStrategy = getOrSeedClipboardStrategy();
 /**
  * Permanently and silently switches this device to `paste` strategy: no
  * toast, ever (design point 1) — the button's own label is the only signal.
- * A no-op if already demoted, so callers don't need to check first.
+ * A no-op if already demoted, so callers don't need to check first. Also
+ * refreshes the clipboard preview control (W7), which shares this exact
+ * silent-relabel rule (docs/tasks/w7-clipboard-preview.md: "Read refused,
+ * or the platform needs a paste ... Never an error toast").
  */
 function demoteClipboardStrategy() {
   if (clipboardStrategy === 'paste') return;
   clipboardStrategy = 'paste';
   saveClipboardStrategy('paste');
   updateActionUI(store.get());
+  refreshClipboardPreviewUI();
+}
+
+/**
+ * Maps a `DENIED`/`UNSUPPORTED` `ClipboardError` to the silent, permanent
+ * strategy demotion both `handleReadFailure` (w/copy, i/copy) and the
+ * clipboard preview's own read share: "this device cannot read the
+ * clipboard" is an expected, handled outcome (design point 1), never a
+ * toast. Returns `true` when `err` was one of those two codes (whether or
+ * not this call is the one that actually flipped the strategy — a device
+ * already in `paste` strategy still returns `true` here, so callers know
+ * not to fall through to their own generic error handling), `false` for
+ * every other error so the caller still needs to handle it.
+ */
+function demoteOnUnreadable(err) {
+  const code = err && err.code;
+  if (code !== 'DENIED' && code !== 'UNSUPPORTED') return false;
+  const outcome = code === 'DENIED' ? 'denied' : 'unsupported';
+  const { strategy } = nextClipboardStrategy({ storedStrategy: clipboardStrategy, readOutcome: outcome });
+  if (strategy === 'paste') demoteClipboardStrategy();
+  return true;
 }
 
 /**
@@ -419,19 +510,63 @@ function saveLastOutputKind(kind) {
  * same generic write-failure message as any other unexpected code.
  */
 function handleReadFailure(err) {
-  const code = err && err.code;
-
-  if (code === 'DENIED' || code === 'UNSUPPORTED') {
-    const outcome = code === 'DENIED' ? 'denied' : 'unsupported';
-    const { strategy } = nextClipboardStrategy({ storedStrategy: clipboardStrategy, readOutcome: outcome });
-    if (strategy === 'paste') demoteClipboardStrategy();
-    return;
-  }
-  if (code === 'EMPTY') {
+  if (demoteOnUnreadable(err)) return;
+  if (err && err.code === 'EMPTY') {
     ctx.toast({ message: 'Your clipboard is empty.', tone: 'error' });
     return;
   }
   ctx.toast({ message: "Couldn't write to the clipboard. Try again.", tone: 'error' });
+}
+
+/**
+ * The clipboard preview's own read attempt (W7, docs/tasks/
+ * w7-clipboard-preview.md), via the exact same `getClipboardText()` seam
+ * `runWCopy`/`runICopy` use — no second way to read the clipboard. Unlike
+ * `handleReadFailure`, this never toasts for `DENIED`/`UNSUPPORTED` (handled
+ * silently by `demoteOnUnreadable`, same as always) OR for `EMPTY` — a
+ * genuinely empty clipboard is one of the preview's own honestly-labelled
+ * states (the card shows "Your clipboard is empty." inline), not an error,
+ * so it's recorded as an obtained empty string rather than toasted. Only a
+ * truly unexpected code falls back to a toast, since nothing else in the
+ * card explains it.
+ */
+async function runClipboardPreviewRead() {
+  try {
+    const text = await getClipboardText();
+    setClipboardPreviewText(text);
+  } catch (err) {
+    if (demoteOnUnreadable(err)) return;
+    if (err && err.code === 'EMPTY') {
+      setClipboardPreviewText('');
+      return;
+    }
+    ctx.toast({ message: "Couldn't read the clipboard. Try again.", tone: 'error' });
+  }
+}
+
+/**
+ * The clipboard preview's `paste`-shaped path (W7), the same shape as
+ * `handleActionPaste` below: `preventDefault` so the pasted text never
+ * visibly lands in the contenteditable control, the text comes straight
+ * from `event.clipboardData`, and the control is cleared and blurred after.
+ * A failed extraction (nothing pasted, e.g. an image) is treated the same
+ * as a genuinely empty clipboard — recorded, not toasted — for the same
+ * reason as `runClipboardPreviewRead`'s `EMPTY` case above.
+ */
+function handleClipboardPreviewPaste(event) {
+  event.preventDefault();
+  const actionEl = event.target;
+
+  let text;
+  try {
+    text = readFromPasteEvent(event);
+  } catch {
+    text = '';
+  }
+
+  actionEl.textContent = '';
+  actionEl.blur();
+  setClipboardPreviewText(text);
 }
 
 // ---------------------------------------------------------------------------
@@ -580,6 +715,11 @@ async function runWCopy() {
   let readError = null;
 
   const textPromise = getClipboardText().then((clipboardText) => {
+    // W7: feed the preview "for free" the instant a real read succeeds —
+    // regardless of what decideWCopy does with it next (SKIP/EMPTY_STACK
+    // included), since this genuinely is what's on the clipboard right now
+    // (docs/tasks/w7-clipboard-preview.md).
+    setClipboardPreviewText(clipboardText);
     const result = decideWCopy(stack, clipboardText, lastOutput, lastKind);
     if (!result.ok) {
       abortReason = result.reason;
@@ -634,6 +774,8 @@ async function runICopy() {
   let readError = null;
 
   const textPromise = getClipboardText().then((clipboardText) => {
+    // W7: same "for free" feed as runWCopy above.
+    setClipboardPreviewText(clipboardText);
     const result = decideICopy(clipboardText, stack.separator, lastOutput, lastKind);
     if (!result.ok) {
       abortReason = result.reason;
@@ -903,6 +1045,10 @@ function handleActionPaste(event) {
     return;
   }
 
+  // W7: feed the preview "for free" from a successful paste too, same as
+  // the read-shaped path above — one insertion point covers both buttons.
+  setClipboardPreviewText(text);
+
   if (action === 'wcopy') {
     handleWCopyPaste(text, finish);
   } else {
@@ -972,6 +1118,27 @@ document.addEventListener('click', (event) => {
       } else {
         actionEl.focus();
       }
+      break;
+    }
+    // W7: the clipboard preview's control — the exact same focus-vs-run
+    // decision as w/copy/i/copy above, and for the same reason: a device in
+    // `paste` strategy can only ever get clipboard text from a native paste
+    // landing on this control (handleClipboardPreviewPaste, wired below).
+    case 'clipboard-preview-action': {
+      const { attemptRead } = nextClipboardStrategy({ storedStrategy: clipboardStrategy, readOutcome: null });
+      if (attemptRead) {
+        runClipboardPreviewRead();
+      } else {
+        actionEl.focus();
+      }
+      break;
+    }
+    case 'toggle-clipboard-preview':
+      toggleClipboardPreviewPref(ctx);
+      break;
+    case 'clipboard-preview-expand': {
+      const pieceEl = actionEl.closest('[data-id]');
+      if (pieceEl) toggleClipboardPreviewExpanded(pieceEl, ctx);
       break;
     }
     case 'toggle-pile-preview':
@@ -1104,6 +1271,10 @@ document.addEventListener('change', (event) => {
     setDensity(target.value, ctx);
     return;
   }
+  if (target.matches('[data-role="show-clipboard"]')) {
+    setShowClipboard(target.checked, ctx);
+    return;
+  }
   if (target.matches('[data-role="import-file-input"]')) {
     const file = target.files && target.files[0];
     if (file) {
@@ -1165,7 +1336,7 @@ document.addEventListener('keydown', (event) => {
     (event.key === 'Enter' || event.key === ' ') &&
     target.matches &&
     target.matches(
-      '[data-action="switch-stack"], [data-action="begin-rename-stack"], [data-action="wcopy"], [data-action="icopy"]',
+      '[data-action="switch-stack"], [data-action="begin-rename-stack"], [data-action="wcopy"], [data-action="icopy"], [data-action="clipboard-preview-action"]',
     )
   ) {
     event.preventDefault();
@@ -1196,20 +1367,28 @@ document.addEventListener('paste', (event) => {
     handleActionPaste(event);
     return;
   }
+  if (target.matches && target.matches('[data-action="clipboard-preview-action"]')) {
+    handleClipboardPreviewPaste(event);
+    return;
+  }
   if (!target.matches || !target.matches('[data-role="paste-text"]')) return;
   handlePasteFallback(event);
 });
 
-// Neither action control must ever retain typed, dropped, or IME-composed
-// content — only a `paste` (handled above, separately, since that's the
-// gesture the `paste` strategy relies on) may ever produce a result, and
-// even that is read straight from `event.clipboardData` rather than left to
-// actually land in the element. Blocking every `beforeinput` unconditionally
-// on both controls is simpler and more robust than trying to allow-list
-// input types, and keeps the guard as one rule instead of one per control.
+// Neither action control (nor the clipboard preview's own control, W7) must
+// ever retain typed, dropped, or IME-composed content — only a `paste`
+// (handled above, separately, since that's the gesture the `paste` strategy
+// relies on) may ever produce a result, and even that is read straight from
+// `event.clipboardData` rather than left to actually land in the element.
+// Blocking every `beforeinput` unconditionally on all three is simpler and
+// more robust than trying to allow-list input types, and keeps the guard as
+// one rule instead of one per control.
 document.addEventListener('beforeinput', (event) => {
   const target = event.target;
-  if (target.matches && target.matches('[data-action="wcopy"], [data-action="icopy"]')) {
+  if (
+    target.matches &&
+    target.matches('[data-action="wcopy"], [data-action="icopy"], [data-action="clipboard-preview-action"]')
+  ) {
     event.preventDefault();
   }
 });
