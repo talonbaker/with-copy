@@ -13,7 +13,51 @@ const CASE_LABELS = {
   'read-then-write': '3. await readText then await writeText',
   'write-deferred': '4. writeDeferred(readText().then(transform))',
   'paste-event': '5. Paste-event path',
+  'foreign-read': '6. Foreign-clipboard read',
+  'foreign-write-deferred': '7. Foreign-clipboard writeDeferred',
+  'editable-paste': '8. Contenteditable paste target',
+  'editable-one-tap': '9. Contenteditable paste target, one tap only',
 };
+
+/**
+ * Manual, human-observed facts that no script can detect (whether a native
+ * OS callout appeared, whether the keyboard stayed down). Each entry reads
+ * one control live when the report is rendered, rather than being pushed
+ * into `results` by an event handler, since there is no "outcome" event to
+ * hook — the tester just answers by hand at their own pace.
+ * @type {Array<{ caseId: string, describe: () => string }>}
+ */
+const MANUAL_ANSWERS = [
+  {
+    caseId: 'foreign-read',
+    describe: () => `  Callout appeared: ${checkboxAnswer('foreign-read-callout')}`,
+  },
+  {
+    caseId: 'foreign-write-deferred',
+    describe: () => `  Callout appeared: ${checkboxAnswer('foreign-write-deferred-callout')}`,
+  },
+  {
+    caseId: 'editable-paste',
+    describe: () =>
+      `  Keyboard stayed down: ${checkboxAnswer('editable-paste-keyboard-down')}\n` +
+      `  Edit menu offered Paste: ${checkboxAnswer('editable-paste-menu-offered')}`,
+  },
+  {
+    caseId: 'editable-one-tap',
+    describe: () => `  Menu appeared: ${radioAnswer('one-tap-menu')}`,
+  },
+];
+
+function checkboxAnswer(role) {
+  const el = document.querySelector(`[data-role="${role}"]`);
+  if (!el) return 'not answered';
+  return el.checked ? 'yes' : 'not checked';
+}
+
+function radioAnswer(name) {
+  const checked = document.querySelector(`input[name="${name}"]:checked`);
+  return checked ? checked.value : 'not answered';
+}
 
 function resultRow(caseId) {
   return document.querySelector(`[data-result="${caseId}"]`);
@@ -88,6 +132,8 @@ function renderReport() {
     } else {
       lines.push(`  FAILED — ${r.errorName}: ${r.errorMessage}`);
     }
+    const manual = MANUAL_ANSWERS.find((m) => m.caseId === id);
+    if (manual) lines.push(manual.describe());
     lines.push('');
   }
 
@@ -141,6 +187,79 @@ function runWriteDeferred() {
       const { name, message } = describeError(err);
       reportResult('write-deferred', { outcome: 'error', errorName: name, errorMessage: message });
     });
+}
+
+async function runForeignRead() {
+  try {
+    const text = await readText();
+    const preview = text.length > 60 ? `${text.slice(0, 60)}…` : text;
+    reportResult('foreign-read', { outcome: 'success', detail: `read ${text.length} chars: "${preview}"` });
+  } catch (err) {
+    const { name, message } = describeError(err);
+    reportResult('foreign-read', { outcome: 'error', errorName: name, errorMessage: message });
+  }
+}
+
+function runForeignWriteDeferred() {
+  // Same shape as runWriteDeferred (case 4): writeDeferred is called
+  // synchronously in the click handler, before any await, so its own
+  // synchronous navigator.clipboard.write() call still lands inside this
+  // gesture. The only difference from case 4 is the precondition — this one
+  // is meant to be run against clipboard content copied from another app.
+  const textPromise = readText().then((text) => `${text} [foreign-write-deferred]`);
+  writeDeferred(textPromise)
+    .then(() => {
+      reportResult('foreign-write-deferred', { outcome: 'success', detail: 'writeDeferred resolved' });
+    })
+    .catch((err) => {
+      const { name, message } = describeError(err);
+      reportResult('foreign-write-deferred', { outcome: 'error', errorName: name, errorMessage: message });
+    });
+}
+
+/**
+ * Wires a contenteditable paste target for experiments 8 and 9: on `paste`,
+ * prevent the browser from actually inserting the pasted text (the target
+ * must never visibly hold it), pull the text from `event.clipboardData`,
+ * transform it, and write the result back inside the same event — a user
+ * gesture on every platform, WebKit included, so this `writeText` call needs
+ * no permission of its own. Reports success/failure automatically; the
+ * keyboard/menu/tap-count questions are answered by hand (see MANUAL_ANSWERS).
+ * @param {string} caseId
+ * @param {string} roleAttr
+ * @param {string} restingLabel text to restore once the paste is handled
+ */
+function wireEditablePasteTarget(caseId, roleAttr, restingLabel) {
+  const target = document.querySelector(`[data-role="${roleAttr}"]`);
+  if (!target) return;
+
+  target.addEventListener('beforeinput', (event) => event.preventDefault());
+
+  const reset = () => {
+    target.textContent = restingLabel;
+    target.blur();
+  };
+
+  target.addEventListener('paste', (event) => {
+    event.preventDefault();
+    try {
+      const text = readFromPasteEvent(event);
+      const transformed = `${text} [${caseId}]`;
+      writeText(transformed)
+        .then(() => {
+          reportResult(caseId, { outcome: 'success', detail: `wrote ${transformed.length} chars back` });
+        })
+        .catch((err) => {
+          const { name, message } = describeError(err);
+          reportResult(caseId, { outcome: 'error', errorName: name, errorMessage: message });
+        })
+        .finally(reset);
+    } catch (err) {
+      const { name, message } = describeError(err);
+      reportResult(caseId, { outcome: 'error', errorName: name, errorMessage: message });
+      reset();
+    }
+  });
 }
 
 function setUpPasteExperiment() {
@@ -198,6 +317,8 @@ function wireButtons() {
       else if (caseId === 'read-alone') runReadAlone();
       else if (caseId === 'read-then-write') runReadThenWrite();
       else if (caseId === 'write-deferred') runWriteDeferred();
+      else if (caseId === 'foreign-read') runForeignRead();
+      else if (caseId === 'foreign-write-deferred') runForeignWriteDeferred();
     });
   });
 
@@ -205,7 +326,17 @@ function wireButtons() {
   if (copyButton) copyButton.addEventListener('click', runCopyResults);
 }
 
+/** Re-renders the report live as the tester answers the manual questions. */
+function wireManualInputs() {
+  document.querySelectorAll('.probe-manual input').forEach((input) => {
+    input.addEventListener('change', renderReport);
+  });
+}
+
 renderEnvironment();
 setUpPasteExperiment();
+wireEditablePasteTarget('editable-paste', 'editable-paste-target', 'Tap, then Paste');
+wireEditablePasteTarget('editable-one-tap', 'editable-one-tap-target', 'Tap once, then wait');
 wireButtons();
+wireManualInputs();
 renderReport();
