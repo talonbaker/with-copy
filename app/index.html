@@ -99,6 +99,11 @@
   <symbol id="icon-chevron" viewBox="0 0 24 24">
     <path d="M6 9l6 6 6-6" />
   </symbol>
+  <symbol id="icon-stack" viewBox="0 0 24 24">
+    <path d="M12 3.5l8.5 4.5-8.5 4.5-8.5-4.5L12 3.5z" />
+    <path d="M3.5 12l8.5 4.5 8.5-4.5" />
+    <path d="M3.5 15.8l8.5 4.5 8.5-4.5" />
+  </symbol>
 </svg>
 
 <header class="wc-topbar">
@@ -130,7 +135,33 @@
 </main>
 
 <div class="wc-actionbar">
-  <button class="wc-action" type="button" data-action="wcopy">w/copy</button>
+  <div class="wc-pilestrip" data-role="pile-strip" hidden>
+    <button
+      class="wc-pilestrip__toggle"
+      type="button"
+      data-action="toggle-pile-preview"
+      data-role="pile-toggle"
+      aria-expanded="false"
+      aria-controls="pile-preview"
+    >
+      <svg class="wc-icon wc-pilestrip__icon" aria-hidden="true"><use href="#icon-stack"></use></svg>
+      <span data-role="pile-count">0 pieces stacked</span>
+      <svg class="wc-icon wc-pilestrip__chevron" aria-hidden="true"><use href="#icon-chevron"></use></svg>
+    </button>
+    <button class="wc-pilestrip__clear" type="button" data-action="clear-pile" aria-label="Clear the stacked pile">
+      Clear
+    </button>
+  </div>
+  <div class="wc-pilepreview" id="pile-preview" data-role="pile-preview" hidden>
+    <ol class="wc-pilepreview__list" data-role="pile-preview-list"></ol>
+  </div>
+  <div class="wc-actionrow">
+    <button class="wc-action" type="button" data-action="wcopy">w/copy</button>
+    <button class="wc-action wc-action--pile" type="button" data-action="icopy">
+      <svg class="wc-icon" aria-hidden="true"><use href="#icon-stack"></use></svg>
+      i/copy
+    </button>
+  </div>
 </div>
 
 <aside class="wc-panel" data-role="panel" hidden>

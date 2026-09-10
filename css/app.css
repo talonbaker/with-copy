@@ -588,14 +588,25 @@ a:focus-visible,
   bottom: 0;
   z-index: var(--z-actionbar);
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
   padding: var(--space-3) var(--space-4) calc(var(--space-3) + env(safe-area-inset-bottom));
   background: linear-gradient(to top, var(--bg) 60%, transparent);
 }
 
-.wc-action {
+/* Holds w/copy and i/copy side by side. `align-items: stretch` (flex's
+   default) is what keeps the two buttons the same height even though their
+   font sizes differ slightly — see the W6 section below. */
+.wc-actionrow {
+  display: flex;
   width: 100%;
   max-width: 640px;
+  gap: var(--space-3);
+}
+
+.wc-action {
+  flex: 1.7 1 0;
   padding: var(--space-4);
   border: none;
   border-radius: var(--radius-lg);
@@ -1355,5 +1366,191 @@ dialog {
   font-size: var(--fs-xs);
   word-break: break-all;
   text-align: center;
+}
+
+/* ==========================================================================
+   Added in W6: i/copy — the second, secondary action button; the pile
+   strip and its preview.
+
+   Design intent (docs/tasks/w6-icopy-stack.md): w/copy stays the one
+   saturated, dominant control. i/copy sits beside it, same corner radius
+   and height (via .wc-actionrow's flex `stretch`) so the pair reads as one
+   family, but built entirely from --accent-soft/--accent — a tonal
+   treatment, never the solid --accent fill w/copy uses — plus a narrower
+   flex share (1 vs w/copy's 1.7) and a smaller font size. Three signals
+   (fill weight, size, width), not one, keep it legibly secondary in every
+   theme and density without needing to mute it into illegibility.
+   ========================================================================== */
+
+.wc-action--pile {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  flex: 1 1 0;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: var(--fs-md);
+  font-weight: 700;
+}
+
+.wc-action--pile .wc-icon {
+  width: 18px;
+  height: 18px;
+}
+
+.wc-action--pile:hover {
+  filter: none;
+  background: color-mix(in srgb, var(--accent) 18%, var(--accent-soft));
+  box-shadow: var(--shadow-md);
+}
+
+.wc-action--pile:active {
+  transform: scale(0.98);
+}
+
+/* The strip: "N pieces stacked ... Clear". Present only while the pile is
+   non-empty — main.js's renderPileStrip toggles [hidden]. Tonal, at the
+   active stack's accent, like the piece "Add variant" and radio-chip
+   treatments elsewhere in this file. */
+.wc-pilestrip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  width: 100%;
+  max-width: 640px;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius);
+  background: var(--accent-soft);
+}
+
+.wc-pilestrip[hidden] {
+  display: none;
+}
+
+.wc-pilestrip__toggle {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  gap: var(--space-2);
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease);
+}
+
+.wc-pilestrip__toggle:hover {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+.wc-pilestrip__icon {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  color: var(--accent);
+}
+
+.wc-pilestrip__toggle span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wc-pilestrip__chevron {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  color: var(--text-muted);
+  transition: transform var(--dur-fast) var(--ease);
+}
+
+.wc-pilestrip__toggle[aria-expanded="true"] .wc-pilestrip__chevron {
+  transform: rotate(180deg);
+}
+
+.wc-pilestrip__clear {
+  flex: none;
+  border: none;
+  background: transparent;
+  color: var(--accent);
+  font-size: var(--fs-xs);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease);
+}
+
+.wc-pilestrip__clear:hover {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+/* The preview: revealed by tapping the strip's count, per the brief's "keep
+   it inside the existing single-screen model; a small expanding region,
+   not a dialog." Same starting-style entrance pattern as .wc-addmenu. */
+.wc-pilepreview {
+  width: 100%;
+  max-width: 640px;
+  max-height: 40vh;
+  overflow-y: auto;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
+}
+
+.wc-pilepreview[hidden] {
+  display: none;
+}
+
+@starting-style {
+  .wc-pilepreview:not([hidden]) {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+
+.wc-pilepreview__list {
+  list-style: none;
+  margin: 0;
+  padding: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.wc-pilepreview__item {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-sm);
+}
+
+.wc-pilepreview__index {
+  flex: none;
+  min-width: 1.4em;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fs-xs);
+}
+
+.wc-pilepreview__text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
 }
 
