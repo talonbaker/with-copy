@@ -253,28 +253,92 @@ export async function readText();                    // string; throws Clipboard
 export async function writeText(text);               // throws ClipboardError
 export function writeDeferred(textPromise);          // Promise<void>; WebKit-safe write, see below
 export function readFromPasteEvent(event);           // string from event.clipboardData
+
+// Platform strategy (W5)
+export function nextClipboardStrategy({ storedStrategy, readOutcome });
+// pure; -> { strategy: 'read'|'paste', attemptRead: boolean }
+export function detectDefaultStrategy({ maxTouchPoints, hasQueryableClipboardReadPermission });
+// pure; -> 'read'|'paste', the seeding rule
+export function loadClipboardStrategy();             // 'read'|'paste'|null; localStorage-backed
+export function saveClipboardStrategy(strategy);      // persists it; never throws
+export function seedClipboardStrategy();              // detects + persists + returns it; synchronous
+export function getOrSeedClipboardStrategy();         // stored value, or seeds one if none yet
 ```
 
-Platform strategy, to be confirmed by the probe page (§9):
+**Two strategies, chosen per device (W5), shared by both action controls
+(W6 added the second control; the strategy itself is per-device, not
+per-button).** This supersedes the single read-then-write sequence this
+section originally described. The product owner's real-iPhone (iOS 18.7)
+probe results overturned that original design: `writeDeferred(readText()
+.then(...))` only ever looked viable in testing because the probe's own
+"read then write" experiments left the probe's own prior output on the
+clipboard, and WebKit skips its native Paste callout entirely for
+same-origin content — never the case that matters. With clipboard content
+copied from another app, pressing w/copy on iPhone failed immediately with
+**no callout at all**: holding a clipboard write open across the read
+(exactly what `writeDeferred` does) appears to suppress the callout, so the
+read is denied before the user ever gets a chance to grant it. See
+`docs/tasks/w5-clipboard-streamline.md` for the full evidence and
+`probe.html` for the experiments that pinned this down.
 
-- **Desktop Chrome.** `readText()` prompts once per origin and the grant
-  persists. `await readText()` then `await writeText()` works because Chrome's
-  transient activation outlives the await.
-- **iPhone (WebKit).** `readText()` inside a tap handler shows a "Paste"
-  callout the user must tap. After an `await`, the tap's activation may be
-  gone, so a plain `writeText` can be rejected. WebKit accepts a write that is
-  *called synchronously in the gesture* with data supplied later:
-  `navigator.clipboard.write([new ClipboardItem({ 'text/plain': promise })])`.
-  `writeDeferred` implements that. The action handler therefore calls
-  `writeDeferred(readText().then(assembleAndGuard))` synchronously.
-- **Paste fallback.** If reading fails with `DENIED` or `UNSUPPORTED`, the UI
-  shows a paste target: a focused, empty `<textarea>` in a sheet titled "Paste
-  here". On its `paste` event, `readFromPasteEvent` yields the text and the
-  handler writes the result *inside that same event*, which is a user gesture.
-  This path needs no clipboard-read permission at all.
+- **`read` strategy — Desktop Chrome.** `readText()` prompts once per origin
+  and the grant persists; `await readText()` then `await writeText()` works
+  because Chrome's transient activation outlives the await. Each button's
+  click handler calls `writeDeferred(readText().then(assembleAndGuard))`
+  synchronously, unchanged from before W5 — desktop Chrome never needed the
+  WebKit trick to begin with, but keeping the same shape here costs nothing
+  and keeps this code path identical to what shipped and was tested.
+- **`paste` strategy — iPhone (WebKit), and anything that has ever had a read
+  denied.** No read is ever attempted, by either button. Both action
+  controls (spec §7.1) are themselves paste targets: `contenteditable`,
+  `inputmode="none"` to keep the software keyboard down. Which control the
+  user's native Paste lands on decides which action runs — the text arrives
+  via `readFromPasteEvent`, and the handler for that control runs its own
+  growth guard and assembly, then `writeText`s the result *inside that same
+  `paste` event*, which is a user gesture on every platform, WebKit
+  included, and needs no permission of its own.
+- **Choosing and persisting the strategy.** Stored in `localStorage` under
+  `wcopy.clipboardStrategy`, one value for the whole device — not one per
+  button. Seeded once, on first run, by `detectDefaultStrategy`: a
+  touch-capable device (`navigator.maxTouchPoints > 0`) with no queryable
+  clipboard-read permission (a capability probe —
+  `navigator.permissions.query({name:'clipboard-read'})` throws synchronously
+  on WebKit, which does not recognize that permission name, but not on
+  Chrome — preferred over sniffing the user agent string) seeds `paste`;
+  everything else seeds `read`. `nextClipboardStrategy` is the pure rule for
+  what happens after: in `read` strategy, a `DENIED` or `UNSUPPORTED` read
+  outcome demotes to `paste` permanently; `paste` strategy never attempts a
+  read again. **A demotion is silent** — no toast, ever — each action
+  control's own label (`js/main.js`'s `updateActionUI`) is the only signal:
+  w/copy switches from "w/copy" to "Paste to w/copy", i/copy from "i/copy"
+  to "Paste to pile" — short enough not to wrap at 390px (`"Paste to
+  i/copy"` measures wider than i/copy's own share of `.wc-actionrow` and
+  overflows there; "pile" is already the app's own name, everywhere else in
+  the UI, for what i/copy accumulates into). This is the single most
+  important behavior in the whole feature: on a device that cannot read the
+  clipboard, the user must never see an error, a sheet, or a prompt as a
+  result of that.
+  - w/copy's paste invitation additionally requires its active stack's
+    clipboard piece to be enabled — disabled, it writes immediately on any
+    strategy, no read or paste needed (design point 4), so it never has
+    anything to invite a paste for.
+  - i/copy's paste invitation depends on the strategy alone: i/copy always
+    needs the clipboard's current content (that is the whole feature, W6),
+    so its own stack's clipboard-piece toggle is irrelevant to it.
+- **The old paste-fallback dialog** (a focused, empty `<textarea>` in a sheet
+  titled "Paste here", `readFromPasteEvent` + `writeText` on its `paste`
+  event) is no longer opened as a consequence of a denied or unsupported
+  read — that is now the `paste` strategy's job, handled inline on whichever
+  action control the user presses, with no dialog at all. The dialog, and
+  the functions that drive it, remain in `js/main.js` and `app/index.html`
+  unused, reserved for a device with no Clipboard API whatsoever (neither
+  `read` nor `paste` strategy can write back in that case); nothing
+  currently opens it automatically.
 
-Every failure maps to a `ClipboardError` code, and the UI maps every code to a
-toast message (§7.5). Nothing is silent.
+Every failure still maps to a `ClipboardError` code, and the UI maps every
+code that reaches it to a toast message (§7.5) — nothing is silent — except
+`DENIED`/`UNSUPPORTED` in `read` strategy, which is the one deliberately
+silent case above.
 
 ### 4.5 `link.js`
 
@@ -364,49 +428,97 @@ recording the focused element's `data-id` and restoring it after render.
 
 ---
 
-## 6. Action path (the w/copy and i/copy presses)
+## 6. Action path (the w/copy and i/copy presses) (W5: two shapes, chosen per device)
 
-Both buttons obtain the clipboard text from the same single function
-(`getClipboardText` in `main.js`) — today a pass-through to `clipboard.js`'s
-`readText()`; W5's platform-strategy work only has to change that one
-function's body for both paths below to pick it up.
+Each action control's click handler decides, before doing anything else,
+whether this press needs a read at all — `nextClipboardStrategy` (§4.4) is
+the single source of truth for that, called with `readOutcome: null`:
 
 ```
-w/copy press
- ├─ stack has no enabled pieces      -> toast error "Nothing to copy. Enable a piece first."
- ├─ clipboard piece disabled         -> text = assemble(stack, '') ; write ; toast success
+click on the action control
+ ├─ wcopy AND its stack's clipboard piece disabled -> runWCopy(): assemble(stack,''); write; toast success (no read/paste, any strategy)
+ ├─ attemptRead === false (paste strategy) -> focus the action control; do nothing else here
+ └─ attemptRead === true  (read strategy)  -> runWCopy() / runICopy()
+```
+
+`i/copy` has no clipboard-piece concept of its own (see below), so its
+click handler skips straight to the `attemptRead` branch.
+
+`runWCopy()` and `runICopy()` (the `read`-shaped path, desktop Chrome in
+practice) each obtain the clipboard text the same way, via `getClipboardText`
+in `main.js` — today a pass-through to `clipboard.js`'s `readText()`:
+
+```
+runWCopy
+ ├─ clipboard piece disabled          -> text = assemble(stack, '') ; write ; toast success
+ │    (an all-disabled stack falls out of this same branch: assemble('')
+ │    reports EMPTY_STACK when nothing else is enabled either)
  └─ clipboard piece enabled
       ├─ getClipboardText() (platform strategy §4.4)
-      ├─ read failed                             -> toast per error code; DENIED/UNSUPPORTED opens paste fallback
+      ├─ read failed, DENIED/UNSUPPORTED -> nextClipboardStrategy demotes to `paste`; SILENT — no toast, both buttons relabel on next render
+      ├─ read failed, other code         -> toast per error code (§7.5)
       ├─ shouldSkip(text, lastOutput) AND
-      │  lastOutputKind === 'wrap'                -> toast info "Already wrapped. Copy something new first."
-      ├─ assemble -> EMPTY_CLIPBOARD              -> toast error "Your clipboard is empty."
+      │  lastOutputKind === 'wrap'        -> toast info "Already wrapped. Copy something new first."
+      ├─ assemble -> EMPTY_STACK/EMPTY_CLIPBOARD -> toast error "Nothing to copy. Enable a piece first." / "Your clipboard is empty."
       └─ write result ; saveLastOutput(result) ; saveLastOutputKind('wrap')
          ; toast success "Wrapped with copy"
 ```
 
 ```
-i/copy press (W6)
+runICopy (W6)
  ├─ getClipboardText() (same strategy as w/copy, §4.4)
- ├─ read failed                             -> toast per error code, same mapping as w/copy
+ ├─ read failed, DENIED/UNSUPPORTED -> same silent demotion as runWCopy
+ ├─ read failed, other code         -> toast per error code, same mapping as w/copy
  ├─ shouldSkip(text, lastOutput) AND
- │  lastOutputKind === 'stack'               -> toast info "Already stacked. Copy something new first."
- ├─ text is empty or whitespace-only        -> toast error "Your clipboard is empty."
+ │  lastOutputKind === 'stack'       -> toast info "Already stacked. Copy something new first."
+ ├─ text is empty or whitespace-only -> toast error "Your clipboard is empty."
  └─ appendChunk(pile, text) ; render = renderPile(newPile, stack.separator)
     ; write render ; savePile(newPile) ; saveLastOutput(render)
     ; saveLastOutputKind('stack') ; toast success "Stacked. N piece(s)."
 ```
 
-`saveLastOutput`/`saveLastOutputKind` run after the write resolves. On
-desktop each path is one awaited clipboard read, one awaited clipboard
-write, and one toast.
+`handleActionPaste` (the `paste`-shaped path, fed by a native `paste` event
+landing on either action control instead of a read — iPhone in practice)
+dispatches on which control the paste landed on (its `data-action`), then
+runs the matching decision below — the exact same `decideWCopy`/`decideICopy`
+steps `runWCopy`/`runICopy` use, just fed by a paste instead of a read:
 
-The guard's kind check is what makes the two buttons compose: wrapping a
-pile i/copy just wrote is allowed even though the clipboard text equals
-`lastOutput` (its kind is `'stack'`, not `'wrap'`), and likewise stacking a
-freshly-wrapped block is allowed (kind `'wrap'`, not `'stack'`). Pressing
-w/copy on a pile never clears the pile — only the pile strip's explicit
-Clear control does (§7.1).
+```
+paste event on the wcopy control
+ ├─ preventDefault() — the control must never visibly hold the pasted text
+ ├─ readFromPasteEvent fails                 -> toast error "Your clipboard is empty."
+ ├─ clipboard piece disabled                 -> text = assemble(stack, '') ; write ; toast success (growth guard never runs)
+ ├─ clipboard piece enabled, shouldSkip(text, lastOutput) AND
+ │  lastOutputKind === 'wrap'                 -> toast info "Already wrapped. Copy something new first."
+ ├─ assemble -> EMPTY_STACK/EMPTY_CLIPBOARD   -> toast error, same mapping as runWCopy
+ └─ writeText(result) ; saveLastOutput(result) ; saveLastOutputKind('wrap')
+    ; clear + blur the control ; toast success "Wrapped with copy"
+
+paste event on the icopy control (W6)
+ ├─ preventDefault()
+ ├─ readFromPasteEvent fails           -> toast error "Your clipboard is empty."
+ ├─ shouldSkip(text, lastOutput) AND
+ │  lastOutputKind === 'stack'          -> toast info "Already stacked. Copy something new first."
+ ├─ text is empty or whitespace-only   -> toast error "Your clipboard is empty."
+ └─ appendChunk(pile, text) ; render = renderPile(newPile, stack.separator)
+    ; writeText(render) ; savePile(newPile) ; saveLastOutput(render)
+    ; saveLastOutputKind('stack') ; clear + blur the control ; toast success "Stacked. N piece(s)."
+```
+
+`saveLastOutput`/`saveLastOutputKind` run after the write resolves, and are
+shared across both strategies and both buttons — the growth guard tracks the
+app's last output and its kind regardless of which strategy or which button
+produced it. On desktop (`read` strategy) each path is still one awaited
+clipboard read, one awaited clipboard write, and one toast, exactly as
+before W5; nothing about that path changed except what happens on a
+denied/unsupported read.
+
+The guard's kind check is what makes the two buttons compose, on either
+strategy: wrapping a pile i/copy just wrote is allowed even though the
+clipboard text equals `lastOutput` (its kind is `'stack'`, not `'wrap'`),
+and likewise stacking a freshly-wrapped block is allowed (kind `'wrap'`,
+not `'stack'`). Pressing w/copy on a pile never clears the pile — only the
+pile strip's explicit Clear control does (§7.1).
 
 ---
 
@@ -438,9 +550,16 @@ Clear control does (§7.1).
     <ol data-role="pile-preview-list"> <!-- first line of each chunk --> </ol>
   </div>
   <div class="wc-actionrow">
-    <button class="wc-action" data-action="wcopy">w/copy</button>
-    <button class="wc-action wc-action--pile" data-action="icopy">i/copy</button>
+    <div class="wc-action" data-action="wcopy" data-role="action-wcopy"
+         role="button" tabindex="0" contenteditable="true" inputmode="none"
+         enterkeyhint="done" autocapitalize="off" autocorrect="off"
+         spellcheck="false" aria-label="w/copy">w/copy</div>
+    <div class="wc-action wc-action--pile" data-action="icopy" data-role="action-icopy"
+         role="button" tabindex="0" contenteditable="true" inputmode="none"
+         enterkeyhint="done" autocapitalize="off" autocorrect="off"
+         spellcheck="false" aria-label="i/copy">i/copy</div>
   </div>
+  <p data-role="action-hint" hidden>If Paste doesn't pop up, try a long‑press.</p>
 </div>
 
 <aside class="wc-panel" data-role="panel" hidden> <!-- stack list --> </aside>
@@ -453,6 +572,23 @@ Clear control does (§7.1).
 Icons are inline SVG symbols in a hidden `<svg>` sprite in `index.html`, not
 text glyphs; the glyphs above are placeholders.
 
+**Both action controls are `contenteditable` paste targets, not `<button>`s
+(W5, extended to i/copy in this merge).** Neither can read the clipboard
+directly on every platform (§4.4), so each doubles as the surface a native
+Paste lands on: `contenteditable="true"` makes that possible at all,
+`inputmode="none"` keeps the software keyboard from appearing (verified
+iOS 16+), and `role="button"`/`tabindex="0"` keep them in the tab order and
+announced correctly despite not being real buttons. Their labels
+(`main.js`'s `updateActionUI`) are plain text with no element children —
+deliberately, so a stray paste can never orphan an element inside an
+editable host — and `aria-label` is kept in sync with that text rather than
+relying on the editable's own accessible-name computation. A single
+`beforeinput` guard (delegated, not duplicated per control) rejects every
+edit on both, so neither can ever become a real text field; every paste is
+read straight from `event.clipboardData`, never allowed to actually land in
+the element, and the control is cleared and blurred after handling it. See
+`js/main.js`'s `handleActionPaste` and §6.
+
 **The pile strip and preview (W6).** `[data-role="pile-strip"]` is hidden
 whenever `pileState.chunks.length === 0` and shown otherwise; its toggle
 button expands `[data-role="pile-preview"]` (an `aria-expanded` disclosure,
@@ -463,7 +599,10 @@ rules). `.wc-action--pile` (i/copy) is deliberately never the same visual
 weight as `.wc-action` (w/copy): tonal fill (`--accent-soft`/`--accent`
 instead of a solid `--accent` background), a smaller font size, and a
 narrower share of `.wc-actionrow`'s flex space, so w/copy stays the single
-dominant, saturated control.
+dominant, saturated control. i/copy's own inner icon (present in the
+original W6 design) was dropped when it became a paste target: a plain-text
+label is what keeps a stray paste from ever orphaning an element inside an
+editable host, matching w/copy.
 
 ### 7.2 Piece card
 
@@ -522,15 +661,21 @@ window).
 
 ### 7.5 Toast messages
 
+**W5 removed two "Paste it here instead." rows and the "Tap w/copy again."
+row below** — those states are no longer reachable. A denied or unsupported
+read now demotes to `paste` strategy silently instead of toasting and
+opening the paste-fallback sheet (§4.4), for both buttons; `NOT_FOCUSED` was
+only ever produced by WebKit's transient-activation rules, and WebKit now
+never attempts a read at all, so that code — if it were ever somehow
+produced — falls back to the generic "Write failed" message below rather
+than getting a row of its own. Everything else is unchanged.
+
 | Situation | Tone | Message |
 |---|---|---|
 | Wrapped and written | success | Wrapped with copy |
 | Clipboard equals last output | info | Already wrapped. Copy something new first. |
 | Clipboard empty | error | Your clipboard is empty. |
 | No enabled pieces | error | Nothing to copy. Enable a piece first. |
-| Read denied | error | Clipboard access was blocked. Paste it here instead. (opens paste sheet) |
-| Unsupported | error | This browser can't read the clipboard. Paste it here instead. (opens paste sheet) |
-| Not focused | error | Tap w/copy again. |
 | Write failed | error | Couldn't write to the clipboard. Try again. |
 | Piece deleted | info | Piece deleted. (Undo) |
 | Variant deleted | info | Variant deleted. (Undo) |
@@ -542,8 +687,8 @@ window).
 | Pile cleared (W6) | info | Pile cleared. (Undo) |
 
 i/copy reuses every other row above verbatim for the outcomes it shares with
-w/copy: clipboard empty, read denied, unsupported, not focused, write
-failed.
+w/copy: clipboard empty, write failed. Neither button ever toasts as a
+result of a denied or unsupported read on any strategy — see §4.4.
 
 ---
 

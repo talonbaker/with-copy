@@ -33,7 +33,23 @@ is committed.
 - [ ] With an empty clipboard, pressing toasts the empty-clipboard error.
 - [ ] With the clipboard piece disabled, pressing writes header + footer without reading the clipboard (no permission prompt on a fresh profile).
 - [ ] With every piece disabled, pressing toasts the nothing-to-copy error.
-- [ ] Denying the read permission shows the paste sheet; pasting into it produces the wrapped output on the clipboard.
+- [ ] Denying the read permission demotes silently to paste strategy — no error toast, no dialog — and relabels both w/copy and i/copy to their "Paste to..." labels.
+
+## i/copy and the pile (W6)
+- [ ] With text on the clipboard, pressing i/copy appends it to the pile, writes the joined pile to the clipboard, updates the pile strip's count, and toasts "Stacked. N piece(s)."
+- [ ] Pressing i/copy again without copying anything new toasts "Already stacked" and the pile is unchanged.
+- [ ] With an empty clipboard, pressing i/copy toasts the empty-clipboard error and the pile is unchanged.
+- [ ] Copy, i/copy, copy, i/copy, then w/copy: w/copy wraps the two-piece pile (the growth guard does not mistake the pile's last output for its own last wrap), and pressing w/copy never clears the pile.
+- [ ] The pile preview opens on tapping the strip and lists one truncated line per chunk, in order.
+- [ ] Clear empties the pile immediately (strip disappears) with Undo restoring it.
+
+## Paste strategy (both buttons)
+- [ ] On a device/profile demoted to paste strategy (or with clipboard-read denied), tapping w/copy focuses the control without writing anything; a real paste into it produces the wrapped output and toasts "Wrapped with copy".
+- [ ] Same device, tapping i/copy focuses the control; a real paste into it appends to the pile, updates the pile strip, and toasts "Stacked. N piece(s)."
+- [ ] Neither control ever shows a native keyboard (inputmode="none"), retains a caret, or keeps any typed/dropped/IME text — both are cleared and blurred after every paste, success or failure.
+- [ ] Keyboard-only: Tab to each control, Enter/Space activates it in read strategy; in paste strategy, Enter/Space focuses it and a paste keystroke (Ctrl+V) completes the action.
+- [ ] The full journey — copy, stack (i/copy), copy, stack (i/copy), then wrap (w/copy) — works entirely through real pastes in paste strategy, with the same outcome as the read-strategy version above.
+- [ ] With the active stack's clipboard piece disabled, w/copy shows its plain "w/copy" label even in paste strategy (it never needs a paste); i/copy still shows "Paste to pile" regardless of that toggle.
 
 ## Stacks
 - [ ] Panel opens from the left, lists stacks, marks the active one, closes on backdrop tap and Escape.

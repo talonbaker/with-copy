@@ -9,7 +9,7 @@
 // every deploy gets its own cache name and old caches are cleaned up on the
 // next activate.
 
-const VERSION = '2026-09-10.2';
+const VERSION = '2026-09-10.3';
 const CACHE_NAME = `wcopy-${VERSION}`;
 
 // Every site file that the app needs to run offline, as the

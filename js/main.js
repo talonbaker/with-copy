@@ -144,30 +144,56 @@ function demoteClipboardStrategy() {
 }
 
 /**
- * Reflects the action control's label and long-press hint for the current
- * clipboard-piece state and platform strategy. Called from every `render`
- * (spec §5) so both a clipboard-piece toggle and a silent demotion take
- * effect immediately. "Paste to w/copy" only makes sense when a paste
- * gesture is actually what happens next — the clipboard piece has to be
- * enabled *and* this device has to be in `paste` strategy; a disabled
- * clipboard piece writes immediately regardless of strategy (design point
- * 4), so it always reads as the plain "w/copy" button it always was.
+ * Sets one action control's visible label and keeps its accessible name in
+ * sync with it — both controls are `contenteditable` (W5), so `aria-label`
+ * is what a screen reader actually announces, not the element's own text
+ * content's accessible-name computation, and the two must never drift.
+ * No-ops when the control isn't in the document (defensive; every current
+ * page has both).
+ */
+function setActionLabel(el, label) {
+  if (!el) return;
+  if (el.textContent !== label) el.textContent = label;
+  el.setAttribute('aria-label', label);
+}
+
+/**
+ * Reflects both action controls' labels and the shared long-press hint for
+ * the current clipboard-piece state and platform strategy. Called from
+ * every `render` (spec §5) so both a clipboard-piece toggle and a silent
+ * demotion take effect immediately.
+ *
+ * The two controls' paste-invitation conditions differ, because what they
+ * each need the clipboard for differs:
+ * - w/copy only needs to read the clipboard when its stack's clipboard
+ *   piece is enabled — a disabled clipboard piece writes immediately
+ *   regardless of strategy (design point 4), so "Paste to w/copy" only
+ *   makes sense when the piece is enabled *and* this device is in `paste`
+ *   strategy.
+ * - i/copy always needs the clipboard's current content (that's the whole
+ *   feature — see `docs/tasks/w6-icopy-stack.md`); its own stack's
+ *   clipboard-piece toggle is irrelevant to it, so its paste-invitation
+ *   condition is `paste` strategy alone.
+ *
+ * The hint line is shared chrome (`[data-role="action-hint"]` sits below
+ * both controls, not under either one specifically), so it shows whenever
+ * *either* control is currently inviting a paste.
  */
 function updateActionUI(state) {
-  const actionEl = document.querySelector('[data-action="wcopy"]');
-  if (!actionEl) return;
+  const wcopyEl = document.querySelector('[data-action="wcopy"]');
+  const icopyEl = document.querySelector('[data-action="icopy"]');
 
   const stack = getActiveStack(state);
   const clipboardPiece = stack && stack.pieces.find((p) => p.kind === 'clipboard');
   const clipboardEnabled = Boolean(clipboardPiece && clipboardPiece.enabled);
-  const isPasteMode = clipboardEnabled && clipboardStrategy === 'paste';
+  const wcopyPasteMode = clipboardEnabled && clipboardStrategy === 'paste';
+  const icopyPasteMode = clipboardStrategy === 'paste';
 
-  const label = isPasteMode ? 'Paste to w/copy' : 'w/copy';
-  if (actionEl.textContent !== label) actionEl.textContent = label;
-  actionEl.setAttribute('aria-label', label);
+  setActionLabel(wcopyEl, wcopyPasteMode ? 'Paste to w/copy' : 'w/copy');
+  setActionLabel(icopyEl, icopyPasteMode ? 'Paste to pile' : 'i/copy');
 
   const hintEl = document.querySelector('[data-role="action-hint"]');
-  if (hintEl) hintEl.hidden = !isPasteMode;
+  if (hintEl) hintEl.hidden = !(wcopyPasteMode || icopyPasteMode);
 }
 
 store.subscribe(render);
@@ -408,6 +434,90 @@ function handleReadFailure(err) {
   ctx.toast({ message: "Couldn't write to the clipboard. Try again.", tone: 'error' });
 }
 
+// ---------------------------------------------------------------------------
+// Shared decision steps — the one place each button's actual outcome is
+// decided, called from BOTH its `read`-shaped click path (`runWCopy`/
+// `runICopy`, fed by an awaited `getClipboardText()`) and its `paste`-shaped
+// path (`handleActionPaste`, fed synchronously by a native `paste` event).
+// Keeping the decision here rather than in each path separately is what lets
+// W5's growth guard, empty-clipboard refusal, disabled-clipboard-piece case,
+// and all-disabled-stack case (and W6's mirror-image guard for i/copy) apply
+// identically no matter which strategy produced the clipboard text. Neither
+// function performs I/O of its own (no clipboard, no localStorage, no
+// commit) — callers persist state only after the actual clipboard write
+// succeeds, same reasoning `runWCopy`/`runICopy` already followed.
+// ---------------------------------------------------------------------------
+
+/**
+ * w/copy's decision step. A disabled clipboard piece needs no clipboard text
+ * at all — assembling `''` is what "write only, no read, no paste needed"
+ * (design point 4) means for that piece — so it ignores `clipboardText`
+ * entirely and skips the growth guard; an all-disabled stack falls out of
+ * this same branch, since `assemble(stack, '')` naturally reports
+ * `EMPTY_STACK` when nothing else is enabled either. Every other case runs
+ * the growth guard (only against the app's own last *wrap*, per the W6
+ * interaction with i/copy) and then `assemble`. Returns `assemble`'s own
+ * `{ok:true,text}` / `{ok:false,reason}` shape, with `'SKIP'` added
+ * alongside `assemble`'s `'EMPTY_STACK'`/`'EMPTY_CLIPBOARD'`.
+ * @param {ReturnType<typeof getActiveStack>} stack
+ * @param {string} clipboardText
+ * @param {string|null} lastOutput
+ * @param {'wrap'|'stack'|null} lastKind
+ */
+function decideWCopy(stack, clipboardText, lastOutput, lastKind) {
+  const clipboardPiece = stack.pieces.find((p) => p.kind === 'clipboard');
+  const clipboardEnabled = Boolean(clipboardPiece && clipboardPiece.enabled);
+  if (!clipboardEnabled) return assemble(stack, '');
+  if (shouldSkip(clipboardText, lastOutput) && lastKind === 'wrap') {
+    return { ok: false, reason: 'SKIP' };
+  }
+  return assemble(stack, clipboardText);
+}
+
+/** Maps `decideWCopy`'s failure `reason` to its exact toast (spec §6/§7.5). */
+function wcopyFailureToast(reason) {
+  if (reason === 'SKIP') {
+    return { message: 'Already wrapped. Copy something new first.', tone: 'info' };
+  }
+  if (reason === 'EMPTY_STACK') {
+    return { message: 'Nothing to copy. Enable a piece first.', tone: 'error' };
+  }
+  return { message: 'Your clipboard is empty.', tone: 'error' }; // EMPTY_CLIPBOARD
+}
+
+/**
+ * i/copy's decision step (W6), the mirror image of `decideWCopy`: the growth
+ * guard only fires against the app's own last *stack*, and the only other
+ * refusal is a genuinely empty (or whitespace-only) clipboard — i/copy has
+ * no "disabled piece" or "all-disabled stack" concept of its own, since it
+ * never consults the stack's pieces, only its `separator`. Reads `pileState`
+ * (module-level, W6) but never writes it: the caller commits `nextPile`
+ * itself, only after the clipboard write actually succeeds. Returns
+ * `{ok:true,text,nextPile}` or `{ok:false,reason:'SKIP'|'EMPTY'}`.
+ * @param {string} clipboardText
+ * @param {string} separator
+ * @param {string|null} lastOutput
+ * @param {'wrap'|'stack'|null} lastKind
+ */
+function decideICopy(clipboardText, separator, lastOutput, lastKind) {
+  if (shouldSkip(clipboardText, lastOutput) && lastKind === 'stack') {
+    return { ok: false, reason: 'SKIP' };
+  }
+  if (clipboardText.trim() === '') {
+    return { ok: false, reason: 'EMPTY' };
+  }
+  const nextPile = appendChunk(pileState, clipboardText);
+  return { ok: true, nextPile, text: renderPile(nextPile, separator) };
+}
+
+/** Maps `decideICopy`'s failure `reason` to its exact toast (spec §6/§7.5). */
+function icopyFailureToast(reason) {
+  if (reason === 'SKIP') {
+    return { message: 'Already stacked. Copy something new first.', tone: 'info' };
+  }
+  return { message: 'Your clipboard is empty.', tone: 'error' }; // EMPTY
+}
+
 /**
  * The `read`-shaped half of the action path (spec §6): assemble immediately
  * if the clipboard piece is disabled (no read needed on any strategy —
@@ -421,18 +531,16 @@ async function runWCopy() {
   const stack = getActiveStack(store.get());
   if (!stack) return;
 
-  if (!stack.pieces.some((p) => p.enabled)) {
-    ctx.toast({ message: 'Nothing to copy. Enable a piece first.', tone: 'error' });
-    return;
-  }
-
   const clipboardPiece = stack.pieces.find((p) => p.kind === 'clipboard');
   const clipboardEnabled = Boolean(clipboardPiece && clipboardPiece.enabled);
 
   if (!clipboardEnabled) {
-    const result = assemble(stack, '');
+    // decideWCopy's disabled-clipboard branch also covers the all-disabled-
+    // stack case (assemble('') naturally reports EMPTY_STACK when nothing
+    // else is enabled either), so there is no separate pre-check here.
+    const result = decideWCopy(stack, '', null, null);
     if (!result.ok) {
-      ctx.toast({ message: 'Nothing to copy. Enable a piece first.', tone: 'error' });
+      ctx.toast(wcopyFailureToast(result.reason));
       return;
     }
     try {
@@ -454,9 +562,8 @@ async function runWCopy() {
   // tasks/w6-icopy-stack.md, "The interaction between i/copy and w/copy") —
   // refuse to wrap what w/copy itself already wrapped, but allow wrapping a
   // pile i/copy just finished writing, even though the clipboard text is
-  // identical to `lastOutput` in both cases. `shouldSkip` alone only checks
-  // the text; the `lastKind === 'wrap'` half of this is what makes the
-  // distinction.
+  // identical to `lastOutput` in both cases. `decideWCopy`'s `lastKind ===
+  // 'wrap'` check is what makes the distinction.
   const lastKind = loadLastOutputKind();
   // Set synchronously, inside our own `.then` below, the instant we decide to
   // abort — so the catch block can trust it regardless of what error object
@@ -473,11 +580,7 @@ async function runWCopy() {
   let readError = null;
 
   const textPromise = getClipboardText().then((clipboardText) => {
-    if (shouldSkip(clipboardText, lastOutput) && lastKind === 'wrap') {
-      abortReason = 'SKIP';
-      throw new Error('wcopy: nothing new copied since the last wrap');
-    }
-    const result = assemble(stack, clipboardText);
+    const result = decideWCopy(stack, clipboardText, lastOutput, lastKind);
     if (!result.ok) {
       abortReason = result.reason;
       throw new Error(`wcopy: ${result.reason}`);
@@ -495,10 +598,8 @@ async function runWCopy() {
     saveLastOutputKind('wrap');
     ctx.toast({ message: 'Wrapped with copy', tone: 'success' });
   } catch {
-    if (abortReason === 'SKIP') {
-      ctx.toast({ message: 'Already wrapped. Copy something new first.', tone: 'info' });
-    } else if (abortReason === 'EMPTY_CLIPBOARD' || abortReason === 'EMPTY_STACK') {
-      ctx.toast({ message: 'Your clipboard is empty.', tone: 'error' });
+    if (abortReason) {
+      ctx.toast(wcopyFailureToast(abortReason));
     } else if (readError) {
       handleReadFailure(readError);
     } else {
@@ -523,7 +624,8 @@ async function runICopy() {
   const lastOutput = loadLastOutput();
   // Refuse to stack what i/copy itself already stacked, but allow stacking a
   // fresh chunk even if its text happens to equal a *wrap*'s last output —
-  // the mirror image of `runWCopy`'s guard, same reasoning.
+  // the mirror image of `runWCopy`'s guard, same reasoning. `decideICopy`'s
+  // `lastKind === 'stack'` check is what makes the distinction.
   const lastKind = loadLastOutputKind();
 
   let abortReason = null; // 'SKIP' | 'EMPTY'
@@ -532,16 +634,13 @@ async function runICopy() {
   let readError = null;
 
   const textPromise = getClipboardText().then((clipboardText) => {
-    if (shouldSkip(clipboardText, lastOutput) && lastKind === 'stack') {
-      abortReason = 'SKIP';
-      throw new Error('icopy: nothing new copied since the last stack');
+    const result = decideICopy(clipboardText, stack.separator, lastOutput, lastKind);
+    if (!result.ok) {
+      abortReason = result.reason;
+      throw new Error(`icopy: ${result.reason}`);
     }
-    if (clipboardText.trim() === '') {
-      abortReason = 'EMPTY';
-      throw new Error('icopy: clipboard is empty');
-    }
-    nextPile = appendChunk(pileState, clipboardText);
-    renderedText = renderPile(nextPile, stack.separator);
+    nextPile = result.nextPile;
+    renderedText = result.text;
     return renderedText;
   });
   textPromise.catch((err) => {
@@ -558,12 +657,10 @@ async function runICopy() {
     const count = pileState.chunks.length;
     ctx.toast({ message: `Stacked. ${count} ${count === 1 ? 'piece' : 'pieces'}.`, tone: 'success' });
   } catch {
-    if (abortReason === 'SKIP') {
-      ctx.toast({ message: 'Already stacked. Copy something new first.', tone: 'info' });
-    } else if (abortReason === 'EMPTY') {
-      ctx.toast({ message: 'Your clipboard is empty.', tone: 'error' });
+    if (abortReason) {
+      ctx.toast(icopyFailureToast(abortReason));
     } else if (readError) {
-      reportReadFailure(readError);
+      handleReadFailure(readError);
     } else {
       ctx.toast({ message: "Couldn't write to the clipboard. Try again.", tone: 'error' });
     }
@@ -695,19 +792,100 @@ function handlePasteFallback(event) {
 }
 
 /**
- * The `paste`-shaped half of the action path (design point 2): the action
- * control is a paste target, so a native paste landing on it needs no
+ * w/copy's half of the `paste`-shaped path: `text` is already extracted from
+ * `event.clipboardData` by `handleActionPaste`. Every guarantee (growth
+ * guard, empty-clipboard refusal, disabled-clipboard-piece case,
+ * all-disabled-stack case) comes from `decideWCopy`, the exact same decision
+ * step `runWCopy`'s read branch uses — this is the same action path, just
+ * fed by a paste instead of a read. `finish` (clear + blur the control, then
+ * re-render its label) runs on every exit, success or failure, so the
+ * control never keeps a caret or stray text regardless of outcome.
+ */
+function handleWCopyPaste(text, finish) {
+  const stack = getActiveStack(store.get());
+  if (!stack) {
+    finish();
+    return;
+  }
+
+  const result = decideWCopy(stack, text, loadLastOutput(), loadLastOutputKind());
+  if (!result.ok) {
+    finish();
+    ctx.toast(wcopyFailureToast(result.reason));
+    return;
+  }
+
+  // Called synchronously inside the paste event itself — a user gesture on
+  // every platform, WebKit included — so a plain writeText is safe here, no
+  // writeDeferred trick needed (spec §4.4).
+  writeText(result.text)
+    .then(() => {
+      saveLastOutput(result.text);
+      saveLastOutputKind('wrap');
+      finish();
+      ctx.toast({ message: 'Wrapped with copy', tone: 'success' });
+    })
+    .catch(() => {
+      finish();
+      ctx.toast({ message: "Couldn't write to the clipboard. Try again.", tone: 'error' });
+    });
+}
+
+/**
+ * i/copy's half of the `paste`-shaped path (W6): the mirror image of
+ * `handleWCopyPaste`, sharing `decideICopy` with `runICopy` the same way
+ * `handleWCopyPaste` shares `decideWCopy` with `runWCopy`. i/copy needs the
+ * active stack only for its `separator` — it has no clipboard-piece or
+ * all-disabled-stack case of its own.
+ */
+function handleICopyPaste(text, finish) {
+  const stack = getActiveStack(store.get());
+  if (!stack) {
+    finish();
+    return;
+  }
+
+  const result = decideICopy(text, stack.separator, loadLastOutput(), loadLastOutputKind());
+  if (!result.ok) {
+    finish();
+    ctx.toast(icopyFailureToast(result.reason));
+    return;
+  }
+
+  writeText(result.text)
+    .then(() => {
+      pileState = result.nextPile;
+      savePile(pileState);
+      saveLastOutput(result.text);
+      saveLastOutputKind('stack');
+      renderPileStrip();
+      finish();
+      const count = pileState.chunks.length;
+      ctx.toast({ message: `Stacked. ${count} ${count === 1 ? 'piece' : 'pieces'}.`, tone: 'success' });
+    })
+    .catch(() => {
+      finish();
+      ctx.toast({ message: "Couldn't write to the clipboard. Try again.", tone: 'error' });
+    });
+}
+
+/**
+ * The `paste`-shaped half of the action path (design point 2), for BOTH
+ * controls: each is a paste target, so a native paste landing on it needs no
  * permission and no callout arbitration of its own — the `paste` DOM event
- * itself is the user gesture. `preventDefault` stops the browser from ever
- * actually inserting the pasted text into the contenteditable (it must
- * never visibly hold it); the text is taken straight from
- * `event.clipboardData` instead. Every other guarantee (growth guard,
- * empty-clipboard refusal, assemble) is identical to `runWCopy`'s read
- * branch — this is the same action path, just fed by a paste instead of a
- * read.
+ * itself is the user gesture. Which control the paste landed on (its
+ * `data-action`) decides whether this runs the wrap path or the stack path;
+ * everything else about the two is identical — `preventDefault` stops the
+ * browser from ever actually inserting the pasted text into the
+ * contenteditable (it must never visibly hold it), the text is taken
+ * straight from `event.clipboardData`, and `finish` clears + blurs whichever
+ * control received the paste and re-renders both controls' labels.
  */
 function handleActionPaste(event) {
   const actionEl = event.target;
+  const action = actionEl && actionEl.dataset ? actionEl.dataset.action : null;
+  if (action !== 'wcopy' && action !== 'icopy') return;
+
   event.preventDefault();
 
   const finish = () => {
@@ -725,38 +903,11 @@ function handleActionPaste(event) {
     return;
   }
 
-  const stack = getActiveStack(store.get());
-  if (!stack) {
-    finish();
-    return;
+  if (action === 'wcopy') {
+    handleWCopyPaste(text, finish);
+  } else {
+    handleICopyPaste(text, finish);
   }
-
-  if (shouldSkip(text, loadLastOutput())) {
-    finish();
-    ctx.toast({ message: 'Already wrapped. Copy something new first.', tone: 'info' });
-    return;
-  }
-
-  const result = assemble(stack, text);
-  if (!result.ok) {
-    finish();
-    ctx.toast({ message: 'Your clipboard is empty.', tone: 'error' });
-    return;
-  }
-
-  // Called synchronously inside the paste event itself — a user gesture on
-  // every platform, WebKit included — so a plain writeText is safe here, no
-  // writeDeferred trick needed (spec §4.4).
-  writeText(result.text)
-    .then(() => {
-      saveLastOutput(result.text);
-      finish();
-      ctx.toast({ message: 'Wrapped with copy', tone: 'success' });
-    })
-    .catch(() => {
-      finish();
-      ctx.toast({ message: "Couldn't write to the clipboard. Try again.", tone: 'error' });
-    });
 }
 
 // ---------------------------------------------------------------------------
@@ -797,6 +948,8 @@ document.addEventListener('click', (event) => {
       // the actual wrap happens in the `paste` listener below, on
       // `handleActionPaste`. `nextClipboardStrategy` is the single source
       // of truth for that decision, same rule as the read-failure path.
+      // w/copy only needs this when its stack's clipboard piece is enabled
+      // — disabled, it writes immediately on any strategy (design point 4).
       const { attemptRead } = nextClipboardStrategy({ storedStrategy: clipboardStrategy, readOutcome: null });
       const stack = getActiveStack(store.get());
       const clipboardPiece = stack && stack.pieces.find((p) => p.kind === 'clipboard');
@@ -808,9 +961,19 @@ document.addEventListener('click', (event) => {
       }
       break;
     }
-    case 'icopy':
-      runICopy();
+    case 'icopy': {
+      // i/copy always needs the clipboard's current content (its own
+      // stack's clipboard-piece toggle doesn't apply to it — see
+      // `updateActionUI`), so the same focus-vs-run decision applies
+      // unconditionally on `attemptRead`, with no clipboardEnabled check.
+      const { attemptRead } = nextClipboardStrategy({ storedStrategy: clipboardStrategy, readOutcome: null });
+      if (attemptRead) {
+        runICopy();
+      } else {
+        actionEl.focus();
+      }
       break;
+    }
     case 'toggle-pile-preview':
       togglePilePreview();
       break;
@@ -989,19 +1152,21 @@ document.addEventListener('keydown', (event) => {
     }
     return;
   }
-  // A stack row, the top bar title, and the action control are not native
+  // A stack row, the top bar title, and both action controls are not native
   // buttons (a stack row also hosts its own nested delete button; the
-  // action control is a contenteditable paste target — see W5), so give
+  // action controls are contenteditable paste targets — see W5/W6), so give
   // them keyboard activation by reusing the click handler above via a
   // synthetic click. `preventDefault` here also stops Enter/Space from
-  // inserting a newline/space into the action control before that click
-  // fires (`beforeinput` below covers every other way content could land in
-  // it — paste is handled separately, deliberately, since that IS the
-  // gesture the `paste` strategy relies on).
+  // inserting a newline/space into whichever action control is focused
+  // before that click fires (`beforeinput` below covers every other way
+  // content could land in either — paste is handled separately,
+  // deliberately, since that IS the gesture the `paste` strategy relies on).
   if (
     (event.key === 'Enter' || event.key === ' ') &&
     target.matches &&
-    target.matches('[data-action="switch-stack"], [data-action="begin-rename-stack"], [data-action="wcopy"]')
+    target.matches(
+      '[data-action="switch-stack"], [data-action="begin-rename-stack"], [data-action="wcopy"], [data-action="icopy"]',
+    )
   ) {
     event.preventDefault();
     target.click();
@@ -1027,7 +1192,7 @@ document.addEventListener('focusout', (event) => {
 
 document.addEventListener('paste', (event) => {
   const target = event.target;
-  if (target.matches && target.matches('[data-action="wcopy"]')) {
+  if (target.matches && target.matches('[data-action="wcopy"], [data-action="icopy"]')) {
     handleActionPaste(event);
     return;
   }
@@ -1035,15 +1200,16 @@ document.addEventListener('paste', (event) => {
   handlePasteFallback(event);
 });
 
-// The action control must never retain typed, dropped, or IME-composed
+// Neither action control must ever retain typed, dropped, or IME-composed
 // content — only a `paste` (handled above, separately, since that's the
 // gesture the `paste` strategy relies on) may ever produce a result, and
 // even that is read straight from `event.clipboardData` rather than left to
 // actually land in the element. Blocking every `beforeinput` unconditionally
-// is simpler and more robust than trying to allow-list input types.
+// on both controls is simpler and more robust than trying to allow-list
+// input types, and keeps the guard as one rule instead of one per control.
 document.addEventListener('beforeinput', (event) => {
   const target = event.target;
-  if (target.matches && target.matches('[data-action="wcopy"]')) {
+  if (target.matches && target.matches('[data-action="wcopy"], [data-action="icopy"]')) {
     event.preventDefault();
   }
 });

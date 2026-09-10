@@ -153,6 +153,18 @@ export function writeDeferred(textPromise) {
 
   if (typeof ClipboardItem !== 'undefined' && typeof navigator.clipboard.write === 'function') {
     const blobPromise = guarded.then((text) => new Blob([text], { type: 'text/plain' }));
+    // ClipboardItem only reads this promise if navigator.clipboard.write()
+    // gets far enough to need the data (per spec, its own consumption is
+    // internal to the browser, not a JS-visible .then/.catch). When write()
+    // instead rejects immediately — e.g. a denied read/write permission,
+    // exactly the case that demotes the strategy — nothing else in this
+    // function ever attaches a handler to `blobPromise` itself, so a
+    // rejection here would otherwise surface as an unhandled promise
+    // rejection in the console even though the real error is already
+    // reported through the `navigator.clipboard.write(...)` promise below.
+    // This no-op catch only marks it handled; it doesn't change what
+    // ClipboardItem itself reads from the promise.
+    blobPromise.catch(() => {});
     let item;
     try {
       item = new ClipboardItem({ 'text/plain': blobPromise });
