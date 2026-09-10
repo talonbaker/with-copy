@@ -9,7 +9,7 @@
 // every deploy gets its own cache name and old caches are cleaned up on the
 // next activate.
 
-const VERSION = '2026-09-09.2';
+const VERSION = '2026-09-10.1';
 const CACHE_NAME = `wcopy-${VERSION}`;
 
 // Every site file that the app needs to run offline, as the
@@ -32,6 +32,7 @@ const PRECACHE_URLS = [
   '/js/schema.js',
   '/js/merge.js',
   '/js/clipboard.js',
+  '/js/pile.js',
   '/js/link.js',
   '/js/qr.js',
   '/js/ui/toast.js',

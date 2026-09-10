@@ -14,6 +14,7 @@ import { loadState, createStore, saveState, saveLastOutput, loadLastOutput } fro
 import { createPiece } from './schema.js';
 import { assemble, shouldSkip } from './merge.js';
 import { readText, writeText, writeDeferred, readFromPasteEvent } from './clipboard.js';
+import { loadPile, savePile, clearPile, appendChunk, renderPile } from './pile.js';
 import { showToast } from './ui/toast.js';
 import { undoable } from './ui/undo.js';
 import { renderStack } from './ui/stack-view.js';
@@ -76,6 +77,16 @@ const ctx = {
   getActiveStack,
 };
 
+// ---------------------------------------------------------------------------
+// W6: the pile (i/copy) — in-memory mirror of `wcopy.pile`, loaded once at
+// startup and kept in sync with every append/clear. Not part of `store`:
+// the pile is a transient clipboard-workflow buffer, not application state
+// (see js/pile.js's header comment and docs/tasks/w6-icopy-stack.md), so it
+// never runs through `createStore` and never triggers a structural render.
+// ---------------------------------------------------------------------------
+
+let pileState = loadPile();
+
 function applyRootAttributes(state) {
   const root = document.documentElement;
   const theme = state.settings.theme;
@@ -101,6 +112,7 @@ function render(state) {
 
 store.subscribe(render);
 render(store.get());
+renderPileStrip();
 
 if (corrupted) {
   showToast({ message: "Saved data couldn't be read. Started fresh.", tone: 'error' });
@@ -248,6 +260,54 @@ function openPasteFallback() {
 // ---------------------------------------------------------------------------
 
 /**
+ * THE SEAM (docs/tasks/w6-icopy-stack.md): the one place both w/copy and
+ * i/copy obtain the clipboard text they act on. Today this is a direct
+ * pass-through to `clipboard.js`'s `readText()` — spec §4.4's desktop-Chrome
+ * strategy, the only one this codebase implements so far. W5
+ * (`feat/clipboard-streamline`) adds a platform strategy that on iPhone
+ * makes the action button itself the paste target instead of calling
+ * `readText()`; landing that work only ever needs to change this one
+ * function's body, for both buttons at once, because `runWCopy` and
+ * `runICopy` below call nothing else to get the clipboard's text.
+ * @returns {Promise<string>}
+ */
+function getClipboardText() {
+  return readText();
+}
+
+// W6: the kind of action that produced `wcopy.lastOutput`, alongside the
+// text `store.js` already tracks under that name. Kept as its own key
+// (`wcopy.lastOutputKind`) rather than folded into `wcopy.lastOutput`'s
+// value: `store.js` is not a file this task owns (see docs/tasks/
+// w6-icopy-stack.md's "Files you own"), and its `saveLastOutput`/
+// `loadLastOutput` contract (spec §4.3) is unchanged by this task. The two
+// keys are always written together (see `runWCopy` and `runICopy` below),
+// so they never disagree about which action produced the current
+// `lastOutput` text. Guarded exactly like every localStorage access in
+// store.js and pile.js, for the same reasons (Node, private browsing).
+const LAST_OUTPUT_KIND_KEY = 'wcopy.lastOutputKind';
+
+/** @returns {'wrap'|'stack'|null} */
+function loadLastOutputKind() {
+  try {
+    if (typeof localStorage === 'undefined') return null;
+    return localStorage.getItem(LAST_OUTPUT_KIND_KEY);
+  } catch {
+    return null;
+  }
+}
+
+/** @param {'wrap'|'stack'} kind */
+function saveLastOutputKind(kind) {
+  try {
+    if (typeof localStorage === 'undefined') return;
+    localStorage.setItem(LAST_OUTPUT_KIND_KEY, kind);
+  } catch {
+    // Ignore, same reasoning as store.js's saveLastOutput.
+  }
+}
+
+/**
  * Maps a genuine clipboard *read* failure (a real ClipboardError from
  * `readText()`, captured independently of `writeDeferred`'s own error
  * handling — see the comment in `runWCopy`) to its toast per spec §7.5.
@@ -296,6 +356,7 @@ async function runWCopy() {
       // every w/copy write goes through the same WebKit-safe path.
       await writeDeferred(Promise.resolve(result.text));
       saveLastOutput(result.text);
+      saveLastOutputKind('wrap');
       ctx.toast({ message: 'Wrapped with copy', tone: 'success' });
     } catch {
       ctx.toast({ message: "Couldn't write to the clipboard. Try again.", tone: 'error' });
@@ -304,6 +365,14 @@ async function runWCopy() {
   }
 
   const lastOutput = loadLastOutput();
+  // W6: the growth guard must distinguish wrapping from stacking (docs/
+  // tasks/w6-icopy-stack.md, "The interaction between i/copy and w/copy") —
+  // refuse to wrap what w/copy itself already wrapped, but allow wrapping a
+  // pile i/copy just finished writing, even though the clipboard text is
+  // identical to `lastOutput` in both cases. `shouldSkip` alone only checks
+  // the text; the `lastKind === 'wrap'` half of this is what makes the
+  // distinction.
+  const lastKind = loadLastOutputKind();
   // Set synchronously, inside our own `.then` below, the instant we decide to
   // abort — so the catch block can trust it regardless of what error object
   // `writeDeferred`/`navigator.clipboard.write` ultimately surfaces once the
@@ -318,8 +387,8 @@ async function runWCopy() {
   // with, for the same reason.
   let readError = null;
 
-  const textPromise = readText().then((clipboardText) => {
-    if (shouldSkip(clipboardText, lastOutput)) {
+  const textPromise = getClipboardText().then((clipboardText) => {
+    if (shouldSkip(clipboardText, lastOutput) && lastKind === 'wrap') {
       abortReason = 'SKIP';
       throw new Error('wcopy: nothing new copied since the last wrap');
     }
@@ -338,6 +407,7 @@ async function runWCopy() {
   try {
     await writeDeferred(textPromise);
     saveLastOutput(resolvedText);
+    saveLastOutputKind('wrap');
     ctx.toast({ message: 'Wrapped with copy', tone: 'success' });
   } catch {
     if (abortReason === 'SKIP') {
@@ -349,6 +419,160 @@ async function runWCopy() {
     } else {
       ctx.toast({ message: "Couldn't write to the clipboard. Try again.", tone: 'error' });
     }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// W6: i/copy action path — accumulates clipboard chunks into the pile
+// instead of wrapping them (docs/tasks/w6-icopy-stack.md "Behaviour").
+// Mirrors `runWCopy`'s shape (the same `getClipboardText`/`writeDeferred`
+// seam, the same abort-reason/readError bookkeeping around one
+// `writeDeferred` call) but assembles nothing: the pile itself, joined with
+// the active stack's separator, is the whole output. No header, no footer.
+// ---------------------------------------------------------------------------
+
+async function runICopy() {
+  const stack = getActiveStack(store.get());
+  if (!stack) return; // no active stack to borrow a separator from
+
+  const lastOutput = loadLastOutput();
+  // Refuse to stack what i/copy itself already stacked, but allow stacking a
+  // fresh chunk even if its text happens to equal a *wrap*'s last output —
+  // the mirror image of `runWCopy`'s guard, same reasoning.
+  const lastKind = loadLastOutputKind();
+
+  let abortReason = null; // 'SKIP' | 'EMPTY'
+  let nextPile = null;
+  let renderedText = null;
+  let readError = null;
+
+  const textPromise = getClipboardText().then((clipboardText) => {
+    if (shouldSkip(clipboardText, lastOutput) && lastKind === 'stack') {
+      abortReason = 'SKIP';
+      throw new Error('icopy: nothing new copied since the last stack');
+    }
+    if (clipboardText.trim() === '') {
+      abortReason = 'EMPTY';
+      throw new Error('icopy: clipboard is empty');
+    }
+    nextPile = appendChunk(pileState, clipboardText);
+    renderedText = renderPile(nextPile, stack.separator);
+    return renderedText;
+  });
+  textPromise.catch((err) => {
+    if (!abortReason) readError = err;
+  });
+
+  try {
+    await writeDeferred(textPromise);
+    pileState = nextPile;
+    savePile(pileState);
+    saveLastOutput(renderedText);
+    saveLastOutputKind('stack');
+    renderPileStrip();
+    const count = pileState.chunks.length;
+    ctx.toast({ message: `Stacked. ${count} ${count === 1 ? 'piece' : 'pieces'}.`, tone: 'success' });
+  } catch {
+    if (abortReason === 'SKIP') {
+      ctx.toast({ message: 'Already stacked. Copy something new first.', tone: 'info' });
+    } else if (abortReason === 'EMPTY') {
+      ctx.toast({ message: 'Your clipboard is empty.', tone: 'error' });
+    } else if (readError) {
+      reportReadFailure(readError);
+    } else {
+      ctx.toast({ message: "Couldn't write to the clipboard. Try again.", tone: 'error' });
+    }
+  }
+}
+
+/**
+ * Empties the pile immediately (project rule: no confirmation dialogs,
+ * destructive actions apply immediately with Undo). The previous pile is
+ * held only in this closure for the Undo window; `clearPile()` drops the
+ * persisted copy right away, matching how `deletePiece`/`deleteStack`
+ * elsewhere apply the mutation before offering Undo.
+ */
+function clearPileWithUndo() {
+  const previousPile = pileState;
+  if (previousPile.chunks.length === 0) return;
+
+  pileState = { chunks: [] };
+  clearPile();
+  renderPileStrip();
+
+  ctx.undoable({
+    message: 'Pile cleared.',
+    undo: () => {
+      pileState = previousPile;
+      savePile(pileState);
+      renderPileStrip();
+    },
+  });
+}
+
+function isPilePreviewOpen() {
+  const preview = document.querySelector('[data-role="pile-preview"]');
+  return Boolean(preview && !preview.hidden);
+}
+
+function closePilePreview() {
+  const preview = document.querySelector('[data-role="pile-preview"]');
+  const toggle = document.querySelector('[data-role="pile-toggle"]');
+  if (preview) preview.hidden = true;
+  if (toggle) toggle.setAttribute('aria-expanded', 'false');
+}
+
+function togglePilePreview() {
+  if (isPilePreviewOpen()) {
+    closePilePreview();
+    return;
+  }
+  const preview = document.querySelector('[data-role="pile-preview"]');
+  const toggle = document.querySelector('[data-role="pile-toggle"]');
+  if (!preview || !toggle) return;
+  preview.hidden = false;
+  toggle.setAttribute('aria-expanded', 'true');
+}
+
+/**
+ * Renders the pile strip (count + Clear) and the preview list from
+ * `pileState`. Hides both when the pile is empty, per docs/tasks/
+ * w6-icopy-stack.md ("visible only when the pile is non-empty"). Rebuilds
+ * the preview list's content every time, even while hidden, so it is never
+ * stale the next time it's opened.
+ */
+function renderPileStrip() {
+  const strip = document.querySelector('[data-role="pile-strip"]');
+  const countEl = document.querySelector('[data-role="pile-count"]');
+  const previewList = document.querySelector('[data-role="pile-preview-list"]');
+  if (!strip || !countEl) return;
+
+  const count = pileState.chunks.length;
+  if (count === 0) {
+    strip.hidden = true;
+    closePilePreview();
+    if (previewList) previewList.textContent = '';
+    return;
+  }
+
+  strip.hidden = false;
+  countEl.textContent = `${count} ${count === 1 ? 'piece' : 'pieces'} stacked`;
+
+  if (previewList) {
+    previewList.textContent = '';
+    pileState.chunks.forEach((chunk, i) => {
+      const firstLine = chunk.split('\n')[0].trim();
+      const li = document.createElement('li');
+      li.className = 'wc-pilepreview__item';
+      const index = document.createElement('span');
+      index.className = 'wc-pilepreview__index';
+      index.textContent = String(i + 1);
+      const text = document.createElement('span');
+      text.className = 'wc-pilepreview__text';
+      text.textContent = firstLine === '' ? '(blank)' : firstLine;
+      li.append(index, text);
+      previewList.appendChild(li);
+    });
   }
 }
 
@@ -375,6 +599,7 @@ function handlePasteFallback(event) {
   writeText(result.text)
     .then(() => {
       saveLastOutput(result.text);
+      saveLastOutputKind('wrap');
       const dialog = document.querySelector('[data-role="paste-fallback"]');
       if (dialog) dialog.close();
       ctx.toast({ message: 'Wrapped with copy', tone: 'success' });
@@ -418,6 +643,15 @@ document.addEventListener('click', (event) => {
     }
     case 'wcopy':
       runWCopy();
+      break;
+    case 'icopy':
+      runICopy();
+      break;
+    case 'toggle-pile-preview':
+      togglePilePreview();
+      break;
+    case 'clear-pile':
+      clearPileWithUndo();
       break;
     case 'add-piece':
       toggleAddMenu();
