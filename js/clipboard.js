@@ -1,46 +1,51 @@
 /*
  * clipboard.js — clipboard read/write adapter (spec §4.4).
  *
- * Why WebKit needs `writeDeferred`
- * ---------------------------------
- * iPhone "Chrome" is WebKit under the hood (Apple requires every iOS browser
- * to use WebKit outside the EU), so it follows Safari's clipboard rules, not
- * desktop Chrome's:
+ * Two platform strategies, chosen per device (W5)
+ * ------------------------------------------------
+ * An earlier version of this file assumed `writeDeferred` (below) was the
+ * fix for WebKit: hold a clipboard *write* open across the *read* by calling
+ * `navigator.clipboard.write()` synchronously in the gesture, with the
+ * read's result supplied as a promise. That was wrong for the one case
+ * w/copy actually exists to serve — the product owner's real iPhone (iOS
+ * 18.7) showed that pressing w/copy with content copied from *another app*
+ * fails immediately, with no native Paste callout at all. `writeDeferred`
+ * only ever looked like it worked in testing because the probe page's own
+ * "read then write" experiments left the probe's own output on the
+ * clipboard, and WebKit skips the Paste callout entirely for content that
+ * came from the same origin — never the case that matters here.
  *
- * - Desktop Chrome's transient activation (the "this came from a real user
- *   gesture" flag) survives an `await`, so `await readText(); await
- *   writeText(result)` inside one tap handler works fine — the write still
- *   counts as gesture-triggered even after the read's await.
- * - WebKit's activation does NOT reliably survive an `await`. A `writeText`
- *   called after an awaited read can be rejected with `NotAllowedError`
- *   because, by the time it runs, WebKit no longer considers the call to be
- *   inside the original gesture.
- * - WebKit *does* accept `navigator.clipboard.write([...])` when the
- *   `write()` call itself happens synchronously inside the gesture's call
- *   stack, even if the `ClipboardItem`'s payload is a `Promise` that
- *   resolves later. The gesture only has to cover the moment `write()` is
- *   invoked, not the moment the data becomes available. That is exactly the
- *   shape of "read the clipboard, transform it, write the result": call
- *   `write()` synchronously with a promise for the transformed text, let the
- *   read/transform resolve that promise whenever it's ready.
- * - `writeDeferred` is built around that: it calls
- *   `navigator.clipboard.write([new ClipboardItem({ 'text/plain': blobPromise })])`
- *   synchronously, without ever awaiting first, so the caller can pass in a
- *   promise chain that starts with `readText()`. Where `ClipboardItem` does
- *   not exist (older WebKit, locked-down embedded webviews), it falls back
- *   to `writeText(await promise)`, which only works if that resolution still
- *   lands inside (or close enough to) the gesture — worse than the
- *   `ClipboardItem` path, but the best available fallback.
- * - WebKit also requires the user to tap through a native "Paste" callout
- *   for `readText`; nothing here can suppress or auto-accept it, which is
- *   why the app never assumes a read completes promptly and always keeps a
- *   paste-event fallback (`readFromPasteEvent`) that needs no permission at
- *   all — a `paste` DOM event is itself a user gesture, so the write it
- *   triggers is always safe on WebKit.
+ * The diagnosis: with *foreign* clipboard content, WebKit must show the
+ * Paste callout to satisfy `readText()`. Holding a clipboard write open
+ * across that read (exactly what `writeDeferred(readText().then(...))`
+ * does) appears to suppress the callout entirely, so the read is denied
+ * instantly. A real `paste` DOM event needs no permission, no callout
+ * arbitration, and no prompt — it's the only path the iPhone evidence
+ * trusts. See `docs/tasks/w5-clipboard-streamline.md` for the full evidence
+ * and probe.html for the experiments that pinned this down.
  *
- * None of the above is guessed: it is exercised by `probe.html` (spec §9) on
- * real desktop Chrome and real iPhone Chrome, and the probe's findings are
- * reported back rather than assumed.
+ * So there are two strategies, not one universal sequence:
+ *
+ * - `read` — `readText()`, transform, `writeText()`. Desktop Chrome only:
+ *   its clipboard-read permission is granted once per origin and persists,
+ *   so an awaited read-then-write in one click handler just works.
+ * - `paste` — no read is ever attempted. The action control is itself a
+ *   paste target; the user's native Paste (into that control) supplies the
+ *   text via `readFromPasteEvent`, and the result is written *inside that
+ *   same `paste` event*, which is a user gesture on every platform,
+ *   including WebKit, and needs no permission at all. iPhone (and anything
+ *   that has ever had a read denied) uses this exclusively.
+ *
+ * The strategy is decided once (seeded by a capability probe, see
+ * `seedClipboardStrategy`) and persisted in `localStorage` under
+ * `wcopy.clipboardStrategy`; `nextClipboardStrategy` is the pure rule for
+ * how a stored strategy plus a read's outcome combine into the next one — a
+ * `read`-strategy device demotes itself to `paste` permanently, and
+ * silently, the first time a read comes back `DENIED` or `UNSUPPORTED` (see
+ * `js/main.js`'s action path, spec §6). `writeDeferred` is kept below only
+ * for the `read` strategy's own write, which still benefits from the same
+ * WebKit-safe shape even though `read` strategy in practice means desktop
+ * Chrome; it is never used as a way to avoid a paste event on WebKit again.
  */
 
 /** @typedef {'UNSUPPORTED'|'DENIED'|'NOT_FOCUSED'|'EMPTY'|'UNKNOWN'} ClipboardErrorCode */
@@ -182,4 +187,163 @@ export function readFromPasteEvent(event) {
     throw new ClipboardError('EMPTY', 'The pasted content had no text.');
   }
   return text;
+}
+
+// ---------------------------------------------------------------------------
+// Clipboard strategy (W5) — which of the two shapes above a device uses.
+// ---------------------------------------------------------------------------
+
+/** @typedef {'read'|'paste'} ClipboardStrategy */
+
+const STRATEGY_KEY = 'wcopy.clipboardStrategy';
+
+/**
+ * Pure decision rule behind the `read` → `paste` demotion (spec §4.4, §6).
+ * Takes `{ storedStrategy, readOutcome }` — `storedStrategy` is whatever is
+ * currently persisted (`'read'`, `'paste'`, or `null`/`undefined` for a
+ * device that hasn't been seeded yet, treated the same as `'read'`);
+ * `readOutcome` is `null` when the caller hasn't attempted a read yet and is
+ * only asking whether it should, or one of `'ok'`, `'denied'`,
+ * `'unsupported'`, `'other'` once it has. Returns `{ strategy, attemptRead }`:
+ * the strategy to persist going forward, and whether *this* action should
+ * attempt a read at all.
+ *
+ * - Once in `paste` strategy, it stays there and a read is never attempted
+ *   again — a demotion is permanent for this device (design point 1).
+ * - In `read` strategy, a `denied` or `unsupported` outcome demotes to
+ *   `paste` immediately; every other outcome (including not having read
+ *   yet) keeps `read` and says to attempt one.
+ *
+ * No DOM, no `localStorage`, no `navigator` — safe to unit test directly.
+ * @param {{ storedStrategy: ClipboardStrategy | null | undefined, readOutcome: 'ok'|'denied'|'unsupported'|'other'|null }} input
+ * @returns {{ strategy: ClipboardStrategy, attemptRead: boolean }}
+ */
+export function nextClipboardStrategy({ storedStrategy, readOutcome }) {
+  if (storedStrategy === 'paste') {
+    return { strategy: 'paste', attemptRead: false };
+  }
+  if (readOutcome === 'denied' || readOutcome === 'unsupported') {
+    return { strategy: 'paste', attemptRead: false };
+  }
+  return { strategy: 'read', attemptRead: true };
+}
+
+/**
+ * Pure rule for seeding the strategy on a device that has never stored one.
+ * Takes `{ maxTouchPoints, hasQueryableClipboardReadPermission }` — plain
+ * values, not `navigator` itself, so this is testable without a DOM — and
+ * returns `'paste'` only when the device is touch-capable (a stand-in for
+ * "platform where WebKit's rules apply", per design point 1) *and* has no
+ * queryable clipboard-read permission (the capability-probe half: Chrome
+ * exposes `navigator.permissions.query({name:'clipboard-read'})`, WebKit
+ * does not recognize that permission name at all). Anything else starts
+ * `'read'`. Deliberately does not sniff the user agent string.
+ * @param {{ maxTouchPoints: number, hasQueryableClipboardReadPermission: boolean }} input
+ * @returns {ClipboardStrategy}
+ */
+export function detectDefaultStrategy({ maxTouchPoints, hasQueryableClipboardReadPermission }) {
+  const touch = typeof maxTouchPoints === 'number' && maxTouchPoints > 0;
+  return touch && !hasQueryableClipboardReadPermission ? 'paste' : 'read';
+}
+
+function getLocalStorage() {
+  try {
+    if (typeof localStorage === 'undefined') return null;
+    return localStorage;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Reads the persisted clipboard strategy. Returns `'read'`, `'paste'`, or
+ * `null` if nothing has been seeded yet or `localStorage` is unavailable.
+ * Never throws.
+ * @returns {ClipboardStrategy | null}
+ */
+export function loadClipboardStrategy() {
+  const storage = getLocalStorage();
+  if (!storage) return null;
+  try {
+    const value = storage.getItem(STRATEGY_KEY);
+    return value === 'read' || value === 'paste' ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Persists the clipboard strategy. Never throws: a failed write (quota,
+ * private mode, absent `localStorage`) is a silent no-op, same reasoning as
+ * `store.js`'s persistence helpers — the caller still has the in-memory
+ * value for the rest of this session even if it can't be saved for next
+ * time.
+ * @param {ClipboardStrategy} strategy
+ */
+export function saveClipboardStrategy(strategy) {
+  const storage = getLocalStorage();
+  if (!storage) return;
+  try {
+    storage.setItem(STRATEGY_KEY, strategy);
+  } catch {
+    // Ignore, same reasoning as store.js's saveState.
+  }
+}
+
+/**
+ * The capability probe half of `detectDefaultStrategy`: whether this engine
+ * can be asked, ahead of time, if clipboard-read is queryable — without
+ * actually invoking a real read, which would spend a gesture (or fail
+ * outright outside one) just to find out. Chrome implements the Permissions
+ * API for `'clipboard-read'` and returns a `PermissionStatus`; WebKit does
+ * not recognize that permission name and throws synchronously before ever
+ * returning a promise. That synchronous throw — not the user agent string —
+ * is the signal this relies on.
+ * @returns {boolean}
+ */
+function canQueryClipboardReadPermission() {
+  if (
+    typeof navigator === 'undefined' ||
+    !navigator.permissions ||
+    typeof navigator.permissions.query !== 'function'
+  ) {
+    return false;
+  }
+  try {
+    // The query's own promise is irrelevant here — only whether the engine
+    // accepted the permission name synchronously matters — but it's caught
+    // defensively so an engine that instead *rejects* asynchronously for an
+    // unrecognized name never surfaces as an unhandled rejection.
+    navigator.permissions.query({ name: 'clipboard-read' }).catch(() => {});
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Seeds the clipboard strategy for a device that has never stored one,
+ * persists it, and returns it. Synchronous: `canQueryClipboardReadPermission`
+ * only needs to observe whether `permissions.query` throws, not await its
+ * result, so seeding never delays the first render waiting on a promise.
+ * @returns {ClipboardStrategy}
+ */
+export function seedClipboardStrategy() {
+  const strategy = detectDefaultStrategy({
+    maxTouchPoints: typeof navigator !== 'undefined' ? navigator.maxTouchPoints : 0,
+    hasQueryableClipboardReadPermission: canQueryClipboardReadPermission(),
+  });
+  saveClipboardStrategy(strategy);
+  return strategy;
+}
+
+/**
+ * The strategy to use right now: whatever is already stored, or a freshly
+ * seeded one (persisted as a side effect) if this device has never stored
+ * one before. This is the only function `main.js` needs to call at startup.
+ * @returns {ClipboardStrategy}
+ */
+export function getOrSeedClipboardStrategy() {
+  const stored = loadClipboardStrategy();
+  return stored || seedClipboardStrategy();
 }

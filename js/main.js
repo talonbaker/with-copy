@@ -13,7 +13,15 @@
 import { loadState, createStore, saveState, saveLastOutput, loadLastOutput } from './store.js';
 import { createPiece } from './schema.js';
 import { assemble, shouldSkip } from './merge.js';
-import { readText, writeText, writeDeferred, readFromPasteEvent } from './clipboard.js';
+import {
+  readText,
+  writeText,
+  writeDeferred,
+  readFromPasteEvent,
+  nextClipboardStrategy,
+  getOrSeedClipboardStrategy,
+  saveClipboardStrategy,
+} from './clipboard.js';
 import { loadPile, savePile, clearPile, appendChunk, renderPile } from './pile.js';
 import { showToast } from './ui/toast.js';
 import { undoable } from './ui/undo.js';
@@ -108,6 +116,58 @@ function render(state) {
   renderStack(state, ctx);
   renderStackList(state, ctx);
   renderSettings(state, ctx);
+  updateActionUI(state);
+}
+
+// ---------------------------------------------------------------------------
+// Clipboard strategy (spec §4.4, §6) — read vs paste, chosen per device (W5)
+// ---------------------------------------------------------------------------
+
+// Seeded once at load — iPhone/WebKit-shaped devices start in `paste`
+// strategy, everything else starts in `read` (see clipboard.js's
+// `seedClipboardStrategy`). Kept as a module-level variable rather than
+// re-read from `localStorage` on every click: a demotion updates it in
+// place via `demoteClipboardStrategy`, and nothing else in a running session
+// ever changes it.
+let clipboardStrategy = getOrSeedClipboardStrategy();
+
+/**
+ * Permanently and silently switches this device to `paste` strategy: no
+ * toast, ever (design point 1) — the button's own label is the only signal.
+ * A no-op if already demoted, so callers don't need to check first.
+ */
+function demoteClipboardStrategy() {
+  if (clipboardStrategy === 'paste') return;
+  clipboardStrategy = 'paste';
+  saveClipboardStrategy('paste');
+  updateActionUI(store.get());
+}
+
+/**
+ * Reflects the action control's label and long-press hint for the current
+ * clipboard-piece state and platform strategy. Called from every `render`
+ * (spec §5) so both a clipboard-piece toggle and a silent demotion take
+ * effect immediately. "Paste to w/copy" only makes sense when a paste
+ * gesture is actually what happens next — the clipboard piece has to be
+ * enabled *and* this device has to be in `paste` strategy; a disabled
+ * clipboard piece writes immediately regardless of strategy (design point
+ * 4), so it always reads as the plain "w/copy" button it always was.
+ */
+function updateActionUI(state) {
+  const actionEl = document.querySelector('[data-action="wcopy"]');
+  if (!actionEl) return;
+
+  const stack = getActiveStack(state);
+  const clipboardPiece = stack && stack.pieces.find((p) => p.kind === 'clipboard');
+  const clipboardEnabled = Boolean(clipboardPiece && clipboardPiece.enabled);
+  const isPasteMode = clipboardEnabled && clipboardStrategy === 'paste';
+
+  const label = isPasteMode ? 'Paste to w/copy' : 'w/copy';
+  if (actionEl.textContent !== label) actionEl.textContent = label;
+  actionEl.setAttribute('aria-label', label);
+
+  const hintEl = document.querySelector('[data-role="action-hint"]');
+  if (hintEl) hintEl.hidden = !isPasteMode;
 }
 
 store.subscribe(render);
@@ -247,6 +307,16 @@ function focusPieceText(pieceId) {
   if (textarea) textarea.focus();
 }
 
+// `openPasteFallback`/`handlePasteFallback` and the `wc-paste` dialog they
+// drive are no longer reachable from the action path (W5): a denied or
+// unsupported read now demotes to `paste` strategy silently instead of
+// opening a sheet (design point 3 — "the failure sheet" is retired from the
+// normal path precisely because a denied read is an expected, handled
+// outcome, not an error). They stay in the code, unused, per the brief, as
+// the one thing left for a genuinely broken device — no Clipboard API at
+// all, so neither the `read` nor the `paste` strategy's write can ever
+// succeed either. Nothing in this file currently opens it automatically;
+// that is a deliberate gap, not an oversight, flagged in the W5 report.
 function openPasteFallback() {
   const dialog = document.querySelector('[data-role="paste-fallback"]');
   if (!dialog) return;
@@ -310,28 +380,43 @@ function saveLastOutputKind(kind) {
 /**
  * Maps a genuine clipboard *read* failure (a real ClipboardError from
  * `readText()`, captured independently of `writeDeferred`'s own error
- * handling — see the comment in `runWCopy`) to its toast per spec §7.5.
+ * handling — see the comment in `runWCopy`) to its outcome per spec §6/§4.4.
+ * `DENIED` and `UNSUPPORTED` both mean "this device cannot read the
+ * clipboard" — the case W5 exists for — and per the product owner's iPhone
+ * evidence that is an expected, silent, permanently-handled outcome:
+ * `nextClipboardStrategy` demotes to `paste` and the button relabels itself
+ * on the very next render; no toast, no dialog (design point 1). Every other
+ * code still gets a toast — nothing here is silent (spec §4.4) — but
+ * `NOT_FOCUSED` no longer has a toast of its own (removed from spec §7.5):
+ * it was only ever produced by WebKit's transient-activation rules, and
+ * WebKit now never takes the `read` path at all, so it falls back to the
+ * same generic write-failure message as any other unexpected code.
  */
-function reportReadFailure(err) {
+function handleReadFailure(err) {
   const code = err && err.code;
-  if (code === 'DENIED') {
-    ctx.toast({ message: 'Clipboard access was blocked. Paste it here instead.', tone: 'error' });
-    openPasteFallback();
-  } else if (code === 'UNSUPPORTED') {
-    ctx.toast({
-      message: "This browser can't read the clipboard. Paste it here instead.",
-      tone: 'error',
-    });
-    openPasteFallback();
-  } else if (code === 'NOT_FOCUSED') {
-    ctx.toast({ message: 'Tap w/copy again.', tone: 'error' });
-  } else if (code === 'EMPTY') {
-    ctx.toast({ message: 'Your clipboard is empty.', tone: 'error' });
-  } else {
-    ctx.toast({ message: "Couldn't write to the clipboard. Try again.", tone: 'error' });
+
+  if (code === 'DENIED' || code === 'UNSUPPORTED') {
+    const outcome = code === 'DENIED' ? 'denied' : 'unsupported';
+    const { strategy } = nextClipboardStrategy({ storedStrategy: clipboardStrategy, readOutcome: outcome });
+    if (strategy === 'paste') demoteClipboardStrategy();
+    return;
   }
+  if (code === 'EMPTY') {
+    ctx.toast({ message: 'Your clipboard is empty.', tone: 'error' });
+    return;
+  }
+  ctx.toast({ message: "Couldn't write to the clipboard. Try again.", tone: 'error' });
 }
 
+/**
+ * The `read`-shaped half of the action path (spec §6): assemble immediately
+ * if the clipboard piece is disabled (no read needed on any strategy —
+ * design point 4), otherwise `readText()`, transform, and write. Only ever
+ * called when there IS a read to attempt — the delegated click handler
+ * below checks `nextClipboardStrategy` first and, in `paste` strategy, just
+ * focuses the action control instead of calling this at all; the actual
+ * wrap for that strategy happens in `handleActionPaste`'s `paste` listener.
+ */
 async function runWCopy() {
   const stack = getActiveStack(store.get());
   if (!stack) return;
@@ -415,7 +500,7 @@ async function runWCopy() {
     } else if (abortReason === 'EMPTY_CLIPBOARD' || abortReason === 'EMPTY_STACK') {
       ctx.toast({ message: 'Your clipboard is empty.', tone: 'error' });
     } else if (readError) {
-      reportReadFailure(readError);
+      handleReadFailure(readError);
     } else {
       ctx.toast({ message: "Couldn't write to the clipboard. Try again.", tone: 'error' });
     }
@@ -609,6 +694,71 @@ function handlePasteFallback(event) {
     });
 }
 
+/**
+ * The `paste`-shaped half of the action path (design point 2): the action
+ * control is a paste target, so a native paste landing on it needs no
+ * permission and no callout arbitration of its own — the `paste` DOM event
+ * itself is the user gesture. `preventDefault` stops the browser from ever
+ * actually inserting the pasted text into the contenteditable (it must
+ * never visibly hold it); the text is taken straight from
+ * `event.clipboardData` instead. Every other guarantee (growth guard,
+ * empty-clipboard refusal, assemble) is identical to `runWCopy`'s read
+ * branch — this is the same action path, just fed by a paste instead of a
+ * read.
+ */
+function handleActionPaste(event) {
+  const actionEl = event.target;
+  event.preventDefault();
+
+  const finish = () => {
+    actionEl.textContent = '';
+    actionEl.blur();
+    updateActionUI(store.get());
+  };
+
+  let text;
+  try {
+    text = readFromPasteEvent(event);
+  } catch {
+    finish();
+    ctx.toast({ message: 'Your clipboard is empty.', tone: 'error' });
+    return;
+  }
+
+  const stack = getActiveStack(store.get());
+  if (!stack) {
+    finish();
+    return;
+  }
+
+  if (shouldSkip(text, loadLastOutput())) {
+    finish();
+    ctx.toast({ message: 'Already wrapped. Copy something new first.', tone: 'info' });
+    return;
+  }
+
+  const result = assemble(stack, text);
+  if (!result.ok) {
+    finish();
+    ctx.toast({ message: 'Your clipboard is empty.', tone: 'error' });
+    return;
+  }
+
+  // Called synchronously inside the paste event itself — a user gesture on
+  // every platform, WebKit included — so a plain writeText is safe here, no
+  // writeDeferred trick needed (spec §4.4).
+  writeText(result.text)
+    .then(() => {
+      saveLastOutput(result.text);
+      finish();
+      ctx.toast({ message: 'Wrapped with copy', tone: 'success' });
+    })
+    .catch(() => {
+      finish();
+      ctx.toast({ message: "Couldn't write to the clipboard. Try again.", tone: 'error' });
+    });
+}
+
 // ---------------------------------------------------------------------------
 // Delegated event wiring — the only listeners this app ever attaches.
 // ---------------------------------------------------------------------------
@@ -641,9 +791,23 @@ document.addEventListener('click', (event) => {
       if (dialog) dialog.close();
       break;
     }
-    case 'wcopy':
-      runWCopy();
+    case 'wcopy': {
+      // In `paste` strategy, a click's only job is to focus the action
+      // control so the platform offers its native Paste (design point 2);
+      // the actual wrap happens in the `paste` listener below, on
+      // `handleActionPaste`. `nextClipboardStrategy` is the single source
+      // of truth for that decision, same rule as the read-failure path.
+      const { attemptRead } = nextClipboardStrategy({ storedStrategy: clipboardStrategy, readOutcome: null });
+      const stack = getActiveStack(store.get());
+      const clipboardPiece = stack && stack.pieces.find((p) => p.kind === 'clipboard');
+      const clipboardEnabled = Boolean(clipboardPiece && clipboardPiece.enabled);
+      if (clipboardEnabled && !attemptRead) {
+        actionEl.focus();
+      } else {
+        runWCopy();
+      }
       break;
+    }
     case 'icopy':
       runICopy();
       break;
@@ -825,13 +989,19 @@ document.addEventListener('keydown', (event) => {
     }
     return;
   }
-  // A stack row and the top bar title are not native buttons (a row also
-  // hosts its own nested delete button), so give them keyboard activation by
-  // reusing the click handler above via a synthetic click.
+  // A stack row, the top bar title, and the action control are not native
+  // buttons (a stack row also hosts its own nested delete button; the
+  // action control is a contenteditable paste target — see W5), so give
+  // them keyboard activation by reusing the click handler above via a
+  // synthetic click. `preventDefault` here also stops Enter/Space from
+  // inserting a newline/space into the action control before that click
+  // fires (`beforeinput` below covers every other way content could land in
+  // it — paste is handled separately, deliberately, since that IS the
+  // gesture the `paste` strategy relies on).
   if (
     (event.key === 'Enter' || event.key === ' ') &&
     target.matches &&
-    target.matches('[data-action="switch-stack"], [data-action="begin-rename-stack"]')
+    target.matches('[data-action="switch-stack"], [data-action="begin-rename-stack"], [data-action="wcopy"]')
   ) {
     event.preventDefault();
     target.click();
@@ -857,8 +1027,25 @@ document.addEventListener('focusout', (event) => {
 
 document.addEventListener('paste', (event) => {
   const target = event.target;
+  if (target.matches && target.matches('[data-action="wcopy"]')) {
+    handleActionPaste(event);
+    return;
+  }
   if (!target.matches || !target.matches('[data-role="paste-text"]')) return;
   handlePasteFallback(event);
+});
+
+// The action control must never retain typed, dropped, or IME-composed
+// content — only a `paste` (handled above, separately, since that's the
+// gesture the `paste` strategy relies on) may ever produce a result, and
+// even that is read straight from `event.clipboardData` rather than left to
+// actually land in the element. Blocking every `beforeinput` unconditionally
+// is simpler and more robust than trying to allow-list input types.
+document.addEventListener('beforeinput', (event) => {
+  const target = event.target;
+  if (target.matches && target.matches('[data-action="wcopy"]')) {
+    event.preventDefault();
+  }
 });
 
 const expandDialog = document.querySelector('[data-role="expand"]');

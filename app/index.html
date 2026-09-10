@@ -155,13 +155,46 @@
   <div class="wc-pilepreview" id="pile-preview" data-role="pile-preview" hidden>
     <ol class="wc-pilepreview__list" data-role="pile-preview-list"></ol>
   </div>
+  <!-- Both action controls double as paste targets on devices that can't
+       read the clipboard (W5, spec §4.4/§6): contenteditable so a native
+       paste can land on one, inputmode="none" to keep the software keyboard
+       down (iOS 16+), the rest tuned so neither behaves like a real text
+       field. Which one you paste into decides the action, so i/copy needs
+       this as much as w/copy does. main.js's updateActionUI swaps the labels
+       and toggles the hint below; nothing here is ever set via innerHTML.
+       Labels are plain text, with no element children, so a stray paste can
+       never orphan an icon inside an editable host. -->
   <div class="wc-actionrow">
-    <button class="wc-action" type="button" data-action="wcopy">w/copy</button>
-    <button class="wc-action wc-action--pile" type="button" data-action="icopy">
-      <svg class="wc-icon" aria-hidden="true"><use href="#icon-stack"></use></svg>
-      i/copy
-    </button>
+    <div
+      class="wc-action"
+      data-action="wcopy"
+      data-role="action-wcopy"
+      role="button"
+      tabindex="0"
+      contenteditable="true"
+      inputmode="none"
+      enterkeyhint="done"
+      autocapitalize="off"
+      autocorrect="off"
+      spellcheck="false"
+      aria-label="w/copy"
+    >w/copy</div>
+    <div
+      class="wc-action wc-action--pile"
+      data-action="icopy"
+      data-role="action-icopy"
+      role="button"
+      tabindex="0"
+      contenteditable="true"
+      inputmode="none"
+      enterkeyhint="done"
+      autocapitalize="off"
+      autocorrect="off"
+      spellcheck="false"
+      aria-label="i/copy"
+    >i/copy</div>
   </div>
+  <p class="wc-action__hint" data-role="action-hint" hidden>If Paste doesn't pop up, try a long‑press.</p>
 </div>
 
 <aside class="wc-panel" data-role="panel" hidden>
