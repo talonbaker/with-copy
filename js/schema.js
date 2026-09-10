@@ -29,7 +29,7 @@ const BASE36_ALPHABET = '0123456789abcdefghijklmnopqrstuvwxyz';
 const ID_RANDOM_CHARS = 10;
 
 const STATE_KEYS = ['version', 'activeStackId', 'settings', 'stacks'];
-const SETTINGS_KEYS = ['theme', 'density'];
+const SETTINGS_KEYS = ['theme', 'density', 'showClipboard'];
 const STACK_KEYS = ['id', 'name', 'accent', 'separator', 'pieces'];
 const NON_CLIPBOARD_PIECE_KEYS = [
   'id',
@@ -133,15 +133,18 @@ export function createOnboardingStack() {
  * Creates the default application state used for a first run or as the
  * fallback when stored data cannot be read: one onboarding stack (see
  * `createOnboardingStack`) made active, with default settings
- * (`theme: 'system'`, `density: 'comfortable'`). Takes no arguments and
- * returns the state object. Never throws.
+ * (`theme: 'system'`, `density: 'comfortable'`, `showClipboard: false`).
+ * `showClipboard` (W7) is the single global preference for the opt-in
+ * clipboard-contents preview (docs/tasks/w7-clipboard-preview.md) — off by
+ * default, per that task's privacy rule. Takes no arguments and returns the
+ * state object. Never throws.
  */
 export function createDefaultState() {
   const stack = createOnboardingStack();
   return {
     version: SCHEMA_VERSION,
     activeStackId: stack.id,
-    settings: { theme: 'system', density: 'comfortable' },
+    settings: { theme: 'system', density: 'comfortable', showClipboard: false },
     stacks: [stack],
   };
 }
@@ -357,6 +360,9 @@ export function validateState(input) {
         message: `must be one of ${DENSITIES.join(', ')}`,
       });
     }
+    if (typeof input.settings.showClipboard !== 'boolean') {
+      errors.push({ path: 'settings.showClipboard', message: 'must be a boolean' });
+    }
   }
 
   const stackIds = new Set();
@@ -409,16 +415,38 @@ export function validateStack(input) {
 }
 
 /**
+ * Backfills `settings.showClipboard` (W7) onto a version-1 state object that
+ * predates it, defaulting to `false` — the feature's own "off by default"
+ * rule applies retroactively, so a device that already had a
+ * `wcopy.state` on disk before this task shipped is never treated as
+ * corrupt just because that key didn't exist yet. Returns `input` unchanged
+ * if `settings` isn't a plain object (nothing to backfill; `validateState`
+ * below will report that on its own terms) or already has the key
+ * (including an explicit `false`, so a genuine `true` a future migration
+ * might one day carry forward is never clobbered). Otherwise returns a
+ * shallow copy with the key added — the caller's `input` is never mutated.
+ * Pure; never throws.
+ */
+function backfillShowClipboard(input) {
+  if (!isPlainObject(input.settings) || 'showClipboard' in input.settings) {
+    return input;
+  }
+  return { ...input, settings: { ...input.settings, showClipboard: false } };
+}
+
+/**
  * Migrates a stored state object of any known schema version up to
  * `SCHEMA_VERSION`, validating the result. Takes the raw `input` (typically
  * `JSON.parse` of the stored string) and returns a validated state object at
  * the current schema version. Only version `1` exists today, so a version-1
- * input is simply validated and returned; a future version 2 is meant to be
- * added as one more `switch` branch that upgrades the object's shape before
- * falling into (or repeating) the version-1 validation, not a rewrite of
- * this function. Throws an `Error` with an `.errors` array (same shape as
- * `validateState`'s failure case) when `input` is not an object, its version
- * is unrecognized, or it fails validation.
+ * input only needs its additive-since-launch settings backfilled (today,
+ * `showClipboard`, W7) before being validated and returned; a future
+ * version 2 is meant to be added as one more `switch` branch that upgrades
+ * the object's shape before falling into (or repeating) the version-1
+ * validation, not a rewrite of this function. Throws an `Error` with an
+ * `.errors` array (same shape as `validateState`'s failure case) when
+ * `input` is not an object, its version is unrecognized, or it fails
+ * validation.
  */
 export function migrate(input) {
   if (!isPlainObject(input)) {
@@ -429,7 +457,8 @@ export function migrate(input) {
 
   switch (input.version) {
     case 1: {
-      const result = validateState(input);
+      const patched = backfillShowClipboard(input);
+      const result = validateState(patched);
       if (!result.ok) {
         const error = new Error('Cannot migrate: version 1 data failed validation');
         error.errors = result.errors;

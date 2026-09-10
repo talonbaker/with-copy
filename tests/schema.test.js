@@ -74,6 +74,11 @@ describe('createOnboardingStack / createDefaultState', () => {
     assert.equal(result.ok, true);
     assert.equal(state.activeStackId, state.stacks[0].id);
   });
+
+  test('default state has the clipboard preview off (W7)', () => {
+    const state = createDefaultState();
+    assert.equal(state.settings.showClipboard, false);
+  });
 });
 
 describe('validateState: success', () => {
@@ -120,6 +125,22 @@ describe('validateState: failing cases from spec §3', () => {
     const result = validateState(state);
     assert.equal(result.ok, false);
     assert.ok(findError(result.errors, 'settings.density'));
+  });
+
+  test('settings.showClipboard must be a boolean (W7)', () => {
+    const state = createDefaultState();
+    state.settings.showClipboard = 'yes';
+    const result = validateState(state);
+    assert.equal(result.ok, false);
+    assert.ok(findError(result.errors, 'settings.showClipboard'));
+  });
+
+  test('settings.showClipboard missing entirely is invalid (not backfilled by validateState)', () => {
+    const state = createDefaultState();
+    delete state.settings.showClipboard;
+    const result = validateState(state);
+    assert.equal(result.ok, false);
+    assert.ok(findError(result.errors, 'settings.showClipboard'));
   });
 
   test('stacks must be a non-empty array', () => {
@@ -308,6 +329,29 @@ describe('migrate', () => {
 
   test('throws on non-object input', () => {
     assert.throws(() => migrate(null), (err) => Array.isArray(err.errors));
+  });
+
+  test('backfills a missing settings.showClipboard to false (W7, pre-existing data)', () => {
+    const state = createDefaultState();
+    const raw = JSON.parse(JSON.stringify(state));
+    delete raw.settings.showClipboard;
+    const migrated = migrate(raw);
+    assert.equal(migrated.settings.showClipboard, false);
+  });
+
+  test('does not clobber an explicit settings.showClipboard', () => {
+    const state = createDefaultState();
+    state.settings.showClipboard = true;
+    const migrated = migrate(JSON.parse(JSON.stringify(state)));
+    assert.equal(migrated.settings.showClipboard, true);
+  });
+
+  test('migrate never mutates the caller-owned input object', () => {
+    const state = createDefaultState();
+    const raw = JSON.parse(JSON.stringify(state));
+    delete raw.settings.showClipboard;
+    migrate(raw);
+    assert.equal('showClipboard' in raw.settings, false);
   });
 });
 
