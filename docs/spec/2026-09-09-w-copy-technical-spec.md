@@ -53,6 +53,7 @@ changing it here first.
 │   ├── schema.js                 ids, defaults, validation, migration
 │   ├── merge.js                  pure assembly of the output text
 │   ├── clipboard.js              read/write adapter with WebKit strategy
+│   ├── pile.js                   i/copy's pile: pure append/render + guarded localStorage IO
 │   ├── link.js                   stack <-> URL fragment codec
 │   ├── qr.js                     QR encoder
 │   └── ui/
@@ -151,12 +152,14 @@ Rules, all enforced by `validateState`:
   `activeVariantId` naming one of them.
 - Ids are unique within their scope. Unknown extra keys are rejected (lintable).
 
-Two other localStorage keys, never part of export:
+Other localStorage keys, never part of export:
 
 | Key | Value |
 |---|---|
 | `wcopy.state` | the JSON above |
 | `wcopy.lastOutput` | the exact string the app last wrote to the clipboard, for the growth guard |
+| `wcopy.lastOutputKind` | `'wrap' \| 'stack'` — which button produced `wcopy.lastOutput` (W6). Written alongside it, by whichever of `runWCopy`/`runICopy` in `main.js` last succeeded. The growth guard (§6) now checks both: refuse to wrap what was last *wrapped*, refuse to stack what was last *stacked*, but allow wrapping a pile (kind `stack`) and stacking a wrapped block (kind `wrap`), since those are different actions even when the clipboard text momentarily matches. Kept as its own key rather than folded into `wcopy.lastOutput`'s value so `store.js`'s existing `saveLastOutput(text)`/`loadLastOutput()` contract (§4.3) is untouched by this addition. |
+| `wcopy.pile` | `{ chunks: string[] }` — i/copy's accumulated clipboard chunks (§4.8). One pile, shared across stacks; not scoped to `activeStackId`. **Never part of the exported JSON or the share link** — it is a transient clipboard-workflow buffer, not stack configuration. |
 
 Export/import of the whole state uses the same JSON. Export/import of one stack
 (the share link) uses the `stack` object alone, wrapped as
@@ -317,6 +320,30 @@ cards shift with a FLIP transition. Long-press is not required when a
 dedicated handle exists (the handoff asks for a handle). Keyboard alternative:
 handle is focusable, Arrow Up/Down with the handle focused moves the item.
 
+### 4.8 `pile.js` (W6)
+
+```js
+export function loadPile();                  // { chunks: [] } when absent, unreadable, or the wrong shape
+export function savePile(pile);
+export function clearPile();
+export function appendChunk(pile, text);      // pure; returns a NEW pile; ignores empty/whitespace-only text
+export function renderPile(pile, separator);  // pure; the joined string, per-chunk trailing-trim, '' for zero chunks
+```
+
+`appendChunk` and `renderPile` are pure and synchronous, like `merge.js` —
+no DOM, no `localStorage` — and are the two functions `node:test` exercises
+directly. `loadPile`/`savePile`/`clearPile` follow `store.js`'s guarded
+`localStorage` pattern (never throw; a missing or throwing `localStorage` is
+treated as an empty pile) but live in their own module because the pile is
+not part of the `wcopy.state` document `store.js` owns: it has no schema
+version, is never validated or migrated, and updating it must never trigger
+a `store` subscriber to re-render (§5).
+
+`renderPile`'s per-chunk rule — trailing whitespace stripped
+(`replace(/\s+$/, '')`), leading kept — mirrors `merge.assemble`'s rule for
+non-clipboard segments, so a rendered pile always reads as plain
+accumulation and never picks up a stray trailing newline between chunks.
+
 ---
 
 ## 5. Rendering model
@@ -337,22 +364,49 @@ recording the focused element's `data-id` and restoring it after render.
 
 ---
 
-## 6. Action path (the w/copy press)
+## 6. Action path (the w/copy and i/copy presses)
+
+Both buttons obtain the clipboard text from the same single function
+(`getClipboardText` in `main.js`) — today a pass-through to `clipboard.js`'s
+`readText()`; W5's platform-strategy work only has to change that one
+function's body for both paths below to pick it up.
 
 ```
-press
+w/copy press
  ├─ stack has no enabled pieces      -> toast error "Nothing to copy. Enable a piece first."
  ├─ clipboard piece disabled         -> text = assemble(stack, '') ; write ; toast success
  └─ clipboard piece enabled
-      ├─ read clipboard (platform strategy §4.4)
-      ├─ read failed                  -> toast per error code; DENIED/UNSUPPORTED opens paste fallback
-      ├─ shouldSkip(text, lastOutput) -> toast info "Already wrapped. Copy something new first."
-      ├─ assemble -> EMPTY_CLIPBOARD  -> toast error "Your clipboard is empty."
-      └─ write result ; saveLastOutput(result) ; toast success "Wrapped with copy"
+      ├─ getClipboardText() (platform strategy §4.4)
+      ├─ read failed                             -> toast per error code; DENIED/UNSUPPORTED opens paste fallback
+      ├─ shouldSkip(text, lastOutput) AND
+      │  lastOutputKind === 'wrap'                -> toast info "Already wrapped. Copy something new first."
+      ├─ assemble -> EMPTY_CLIPBOARD              -> toast error "Your clipboard is empty."
+      └─ write result ; saveLastOutput(result) ; saveLastOutputKind('wrap')
+         ; toast success "Wrapped with copy"
 ```
 
-`saveLastOutput` runs after the write resolves. On desktop the whole path is
-two awaited clipboard calls and one toast.
+```
+i/copy press (W6)
+ ├─ getClipboardText() (same strategy as w/copy, §4.4)
+ ├─ read failed                             -> toast per error code, same mapping as w/copy
+ ├─ shouldSkip(text, lastOutput) AND
+ │  lastOutputKind === 'stack'               -> toast info "Already stacked. Copy something new first."
+ ├─ text is empty or whitespace-only        -> toast error "Your clipboard is empty."
+ └─ appendChunk(pile, text) ; render = renderPile(newPile, stack.separator)
+    ; write render ; savePile(newPile) ; saveLastOutput(render)
+    ; saveLastOutputKind('stack') ; toast success "Stacked. N piece(s)."
+```
+
+`saveLastOutput`/`saveLastOutputKind` run after the write resolves. On
+desktop each path is one awaited clipboard read, one awaited clipboard
+write, and one toast.
+
+The guard's kind check is what makes the two buttons compose: wrapping a
+pile i/copy just wrote is allowed even though the clipboard text equals
+`lastOutput` (its kind is `'stack'`, not `'wrap'`), and likewise stacking a
+freshly-wrapped block is allowed (kind `'wrap'`, not `'stack'`). Pressing
+w/copy on a pile never clears the pile — only the pile strip's explicit
+Clear control does (§7.1).
 
 ---
 
@@ -373,7 +427,20 @@ two awaited clipboard calls and one toast.
 </main>
 
 <div class="wc-actionbar">
-  <button class="wc-action" data-action="wcopy">w/copy</button>
+  <!-- W6: visible only while the pile is non-empty -->
+  <div class="wc-pilestrip" data-role="pile-strip" hidden>
+    <button data-role="pile-toggle" data-action="toggle-pile-preview" aria-expanded="false">
+      <span data-role="pile-count">3 pieces stacked</span>
+    </button>
+    <button data-action="clear-pile">Clear</button>
+  </div>
+  <div class="wc-pilepreview" data-role="pile-preview" hidden>
+    <ol data-role="pile-preview-list"> <!-- first line of each chunk --> </ol>
+  </div>
+  <div class="wc-actionrow">
+    <button class="wc-action" data-action="wcopy">w/copy</button>
+    <button class="wc-action wc-action--pile" data-action="icopy">i/copy</button>
+  </div>
 </div>
 
 <aside class="wc-panel" data-role="panel" hidden> <!-- stack list --> </aside>
@@ -385,6 +452,18 @@ two awaited clipboard calls and one toast.
 
 Icons are inline SVG symbols in a hidden `<svg>` sprite in `index.html`, not
 text glyphs; the glyphs above are placeholders.
+
+**The pile strip and preview (W6).** `[data-role="pile-strip"]` is hidden
+whenever `pileState.chunks.length === 0` and shown otherwise; its toggle
+button expands `[data-role="pile-preview"]` (an `aria-expanded` disclosure,
+not a dialog) into a scrollable list of one line per chunk (its first line,
+CSS-truncated), each numbered by position. Clear empties the pile
+immediately and offers Undo, per the no-confirmation-dialogs rule (§ project
+rules). `.wc-action--pile` (i/copy) is deliberately never the same visual
+weight as `.wc-action` (w/copy): tonal fill (`--accent-soft`/`--accent`
+instead of a solid `--accent` background), a smaller font size, and a
+narrower share of `.wc-actionrow`'s flex space, so w/copy stays the single
+dominant, saturated control.
 
 ### 7.2 Piece card
 
@@ -458,6 +537,13 @@ window).
 | Stack deleted | info | Stack deleted. (Undo) |
 | Imported | success | Imported "Name". (Undo) |
 | Saved data unreadable | error | Saved data couldn't be read. Started fresh. |
+| Stacked and written (W6) | success | Stacked. *N* piece(s). (e.g. "Stacked. 1 piece." / "Stacked. 3 pieces.") |
+| Clipboard equals last stacked output (W6) | info | Already stacked. Copy something new first. |
+| Pile cleared (W6) | info | Pile cleared. (Undo) |
+
+i/copy reuses every other row above verbatim for the outcomes it shares with
+w/copy: clipboard empty, read denied, unsupported, not focused, write
+failed.
 
 ---
 
@@ -557,6 +643,12 @@ does not discover files on Node 22). Required coverage:
   invalid input throws with errors, fragment parsing.
 - `store.test.js`: commit notifies, patch does not, saves coalesce (with an
   injected `save` function).
+- `pile.test.js` (W6): `appendChunk` ignores empty/whitespace-only text
+  without mutating its input, keeps meaningful whitespace verbatim;
+  `renderPile` for zero/one/many chunks, custom separator, per-chunk
+  trailing-trim with leading kept; `loadPile`/`savePile`/`clearPile`
+  round-trip, and behave under a missing or throwing `localStorage` the
+  same way `store.test.js` verifies for `wcopy.state`.
 
 UI behaviour is verified against `docs/tasks/manual-checklist.md` until a
 browser test strategy is chosen.
