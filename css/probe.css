@@ -150,6 +150,61 @@ textarea {
   color: var(--probe-err);
 }
 
+.probe-editable {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 2.75rem;
+  margin: 0.5rem 0;
+  font: inherit;
+  font-weight: 600;
+  text-align: center;
+  background: var(--probe-accent);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 0.5rem 0.9rem;
+  cursor: pointer;
+  caret-color: #fff;
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.probe-editable:focus-visible {
+  outline: 2px solid var(--probe-accent);
+  outline-offset: 2px;
+}
+
+.probe-manual {
+  margin: 0.6rem 0 0;
+  padding: 0.5rem 0.75rem;
+  border: 1px dashed var(--probe-border);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.probe-manual legend {
+  padding: 0 0.25rem;
+  color: var(--probe-muted);
+  font-size: 0.8rem;
+}
+
+.probe-manual label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.probe-manual__radios {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
 .probe-report {
   margin-top: 1.5rem;
   background: var(--probe-surface);

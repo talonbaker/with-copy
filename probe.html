@@ -72,11 +72,73 @@
     <p class="probe-result" data-result="paste-event">Not run yet.</p>
   </section>
 
+  <section class="probe-case" data-case="foreign-read">
+    <h2>6. Foreign-clipboard read</h2>
+    <p><strong>Copy some text in another app first</strong> (Notes, Messages,
+    Safari — anything outside this browser tab), then come back and tap.
+    This runs <code>readText()</code> alone, with nothing of ours on the
+    clipboard to skip the native callout.</p>
+    <button type="button" data-action="run" data-case="foreign-read">Run readText</button>
+    <p class="probe-result" data-result="foreign-read">Not run yet.</p>
+    <fieldset class="probe-manual">
+      <legend>What you saw (not detectable from code — answer by hand)</legend>
+      <label><input type="checkbox" data-role="foreign-read-callout"> The native Paste callout appeared</label>
+    </fieldset>
+  </section>
+
+  <section class="probe-case" data-case="foreign-write-deferred">
+    <h2>7. Foreign-clipboard writeDeferred</h2>
+    <p>Same precondition as #6 — <strong>copy some text in another app
+    first</strong> — then tap. This runs experiment 4's exact pattern
+    (<code>writeDeferred(readText().then(transform))</code>) against foreign
+    content instead of the probe's own output, which is the gap the original
+    experiment 4 never tested.</p>
+    <button type="button" data-action="run" data-case="foreign-write-deferred">Run writeDeferred</button>
+    <p class="probe-result" data-result="foreign-write-deferred">Not run yet.</p>
+    <fieldset class="probe-manual">
+      <legend>What you saw (not detectable from code — answer by hand)</legend>
+      <label><input type="checkbox" data-role="foreign-write-deferred-callout"> The native Paste callout appeared</label>
+    </fieldset>
+  </section>
+
+  <section class="probe-case" data-case="editable-paste">
+    <h2>8. Contenteditable paste target</h2>
+    <p>A styled, button-like editable region with <code>inputmode="none"</code>
+    and no visible textarea chrome — the shape the real w/copy button will
+    take in paste strategy. <strong>Copy some text in another app first</strong>,
+    then tap the box below and use Paste from the native edit menu (long-press
+    if a single tap doesn't offer it).</p>
+    <div class="probe-editable" data-role="editable-paste-target" contenteditable="true" role="button" tabindex="0" inputmode="none" enterkeyhint="done" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="Paste test target">Tap, then Paste</div>
+    <p class="probe-result" data-result="editable-paste">Not run yet.</p>
+    <fieldset class="probe-manual">
+      <legend>What you saw (not detectable from code — answer by hand)</legend>
+      <label><input type="checkbox" data-role="editable-paste-keyboard-down"> The software keyboard stayed down</label>
+      <label><input type="checkbox" data-role="editable-paste-menu-offered"> The edit menu offered Paste</label>
+    </fieldset>
+  </section>
+
+  <section class="probe-case" data-case="editable-one-tap">
+    <h2>9. Same, but one tap only</h2>
+    <p>A second copy of the same target. <strong>Copy some text in another
+    app first</strong>, then tap this box exactly once and wait — do not
+    long-press. Record whether the edit menu shows up on that single tap.</p>
+    <div class="probe-editable" data-role="editable-one-tap-target" contenteditable="true" role="button" tabindex="0" inputmode="none" enterkeyhint="done" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="One-tap paste test target">Tap once, then wait</div>
+    <p class="probe-result" data-result="editable-one-tap">Not run yet.</p>
+    <fieldset class="probe-manual">
+      <legend>What you saw (not detectable from code — answer by hand)</legend>
+      <div class="probe-manual__radios" data-role="editable-one-tap-menu">
+        <label><input type="radio" name="one-tap-menu" value="first-tap"> Menu appeared on the first tap</label>
+        <label><input type="radio" name="one-tap-menu" value="long-press"> Menu needed a long-press</label>
+        <label><input type="radio" name="one-tap-menu" value="not-at-all"> Menu did not appear at all</label>
+      </div>
+    </fieldset>
+  </section>
+
   <section class="probe-case" data-case="installed">
-    <h2>6. Repeat #3 and #4 as an installed PWA</h2>
+    <h2>10. Repeat #3, #4, #8, and #9 as an installed PWA</h2>
     <p>Install this page to the home screen (Share → Add to Home Screen on
-    iPhone), open it from the home screen icon, and run experiments 3 and 4
-    again. The “Standalone” value above should read “yes” when you do.</p>
+    iPhone), open it from the home screen icon, and run experiments 3, 4, 8,
+    and 9 again. The “Standalone” value above should read “yes” when you do.</p>
   </section>
 
 </main>
