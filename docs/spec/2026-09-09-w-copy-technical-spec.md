@@ -53,6 +53,7 @@ changing it here first.
 │   ├── schema.js                 ids, defaults, validation, migration
 │   ├── merge.js                  pure assembly of the output text
 │   ├── clipboard.js              read/write adapter with WebKit strategy
+│   ├── clipboard-preview.js      W7: pure truncation/char-count/relative-time helpers for the opt-in preview
 │   ├── pile.js                   i/copy's pile: pure append/render + guarded localStorage IO
 │   ├── link.js                   stack <-> URL fragment codec
 │   ├── qr.js                     QR encoder
@@ -103,7 +104,8 @@ Schema version 1. Stored as JSON. Every id is a short random string from
   "activeStackId": "stk_a1b2c3d4e5",
   "settings": {
     "theme": "system",
-    "density": "comfortable"
+    "density": "comfortable",
+    "showClipboard": false
   },
   "stacks": [
     {
@@ -141,7 +143,12 @@ Rules, all enforced by `validateState`:
 
 - `version` is the integer `1`.
 - `settings.theme` is one of `system | light | dark`. `settings.density` is
-  one of `comfortable | compact`.
+  one of `comfortable | compact`. `settings.showClipboard` is a boolean,
+  default `false` (W7, docs/tasks/w7-clipboard-preview.md) — the single
+  global preference for the opt-in clipboard-contents preview, mirrored as a
+  row in Settings > Appearance and as an eye control on the clipboard card
+  itself (§7.2). A pre-W7 stored state missing this key is backfilled to
+  `false` by `migrate` rather than treated as invalid (§4.1).
 - `stacks` is a non-empty array. `activeStackId` names one of them.
 - `stack.accent` is one of the eight accent names in §7.3.
 - `stack.separator` is a string. Default `"\n\n"`.
@@ -160,6 +167,14 @@ Other localStorage keys, never part of export:
 | `wcopy.lastOutput` | the exact string the app last wrote to the clipboard, for the growth guard |
 | `wcopy.lastOutputKind` | `'wrap' \| 'stack'` — which button produced `wcopy.lastOutput` (W6). Written alongside it, by whichever of `runWCopy`/`runICopy` in `main.js` last succeeded. The growth guard (§6) now checks both: refuse to wrap what was last *wrapped*, refuse to stack what was last *stacked*, but allow wrapping a pile (kind `stack`) and stacking a wrapped block (kind `wrap`), since those are different actions even when the clipboard text momentarily matches. Kept as its own key rather than folded into `wcopy.lastOutput`'s value so `store.js`'s existing `saveLastOutput(text)`/`loadLastOutput()` contract (§4.3) is untouched by this addition. |
 | `wcopy.pile` | `{ chunks: string[] }` — i/copy's accumulated clipboard chunks (§4.8). One pile, shared across stacks; not scoped to `activeStackId`. **Never part of the exported JSON or the share link** — it is a transient clipboard-workflow buffer, not stack configuration. |
+
+**The W7 clipboard preview's own text is never a `localStorage` key at all.**
+`main.js` holds it as a plain in-memory module variable (`{ text, checkedAt }`,
+alongside `pileState`), rebuilt empty on every reload. This is rule 2 of
+docs/tasks/w7-clipboard-preview.md with no exceptions: clipboard contents are
+frequently sensitive, so the preview text must never reach `localStorage`,
+the JSON export, or the share link — only the on/off `settings.showClipboard`
+preference above is persisted.
 
 Export/import of the whole state uses the same JSON. Export/import of one stack
 (the share link) uses the `stack` object alone, wrapped as
@@ -589,6 +604,11 @@ read straight from `event.clipboardData`, never allowed to actually land in
 the element, and the control is cleared and blurred after handling it. See
 `js/main.js`'s `handleActionPaste` and §6.
 
+**W7's clipboard-preview control (§7.2) is a third such element**, same
+shape and same reasoning, with its own paste handler
+(`handleClipboardPreviewPaste`) and its own entry in the shared
+`beforeinput` guard.
+
 **The pile strip and preview (W6).** `[data-role="pile-strip"]` is hidden
 whenever `pileState.chunks.length === 0` and shown otherwise; its toggle
 button expands `[data-role="pile-preview"]` (an `aria-expanded` disclosure,
@@ -627,6 +647,31 @@ The clipboard piece renders the same bar (no variants button, no expand) and
 a centred clipboard icon with the caption "Your clipboard goes here" in place
 of the textarea.
 
+**W7 (docs/tasks/w7-clipboard-preview.md) adds an eye control to that bar**,
+between the label and the drag handle, that flips the single global
+`settings.showClipboard` preference (§3) via an ordinary store commit — off
+by default, so an unmodified card looks exactly as above. When on, the
+icon+caption block is replaced by `.wc-clippreview`, which shows exactly one
+of:
+
+| State | Shown |
+|---|---|
+| Nothing read yet this session | The clipboard icon and a single control, **"Show clipboard"** |
+| Read refused, or this platform needs a paste (§4.4's `paste` strategy) | The same control, relabelled **"Paste to show clipboard"** (or **"Paste to refresh"** once text has been shown once) — never an error toast |
+| Clipboard empty | "Your clipboard is empty." (muted) and a **Refresh** control |
+| Text obtained | The preview text, truncated to `clipboard-preview.js`'s `PREVIEW_MAX_LINES`/`PREVIEW_MAX_CHARS` (a fade plus a "Show more" control that expands into a bounded, scrollable region), a quiet "*N* characters · checked *when*" line, and **Refresh** |
+
+The control is `contenteditable`, a native paste target exactly like
+`.wc-action` (W5) — a device in `paste` strategy can only ever refresh the
+preview via a paste landing on it directly, per `main.js`'s
+`handleClipboardPreviewPaste`. The preview text itself comes from the exact
+same `getClipboardText()` seam w/copy and i/copy use (no second way to read
+the clipboard) and is fed into it "for free" whenever either button
+successfully obtains clipboard text, so pressing one also refreshes the
+card. Every string here is set with `textContent`, never `innerHTML`. The
+text lives in `main.js`'s in-memory-only preview state (§3) — it is never
+written to `localStorage`, the export, or the share link.
+
 ### 7.3 Tokens (`tokens.css`)
 
 - Colors as custom properties on `:root`, redefined under
@@ -650,7 +695,9 @@ of the textarea.
 ### 7.4 Settings dialog
 
 Sections: Appearance (theme radio: System, Light, Dark; density radio:
-Comfortable, Compact), Stacks (Share this stack: Copy link, Show QR;
+Comfortable, Compact; **"Show clipboard preview" switch, W7** — the same
+global `settings.showClipboard` preference as the clipboard card's own eye
+control, §7.2), Stacks (Share this stack: Copy link, Show QR;
 Export all as JSON: Copy, Download; Import JSON: paste field or file picker),
 About (version string, link to repo).
 
